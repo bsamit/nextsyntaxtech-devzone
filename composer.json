@@ -1,0 +1,53 @@
+{
+    "name": "nextsyntaxtech/devzone",
+    "description": "Enterprise Developer Utility & Maintenance Panel for Laravel applications.",
+    "type": "library",
+    "keywords": [
+        "laravel",
+        "developer-panel",
+        "devzone",
+        "migrations",
+        "seeders",
+        "artisan",
+        "database-backup",
+        "swagger",
+        "scribe",
+        "nextsyntaxtech"
+    ],
+    "homepage": "https://github.com/nextsyntaxtech/devzone",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "NextSyntaxTech",
+            "email": "nextsyntaxtech@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^10.0|^11.0|^12.0",
+        "illuminate/routing": "^10.0|^11.0|^12.0",
+        "illuminate/view": "^10.0|^11.0|^12.0",
+        "illuminate/session": "^10.0|^11.0|^12.0",
+        "illuminate/console": "^10.0|^11.0|^12.0",
+        "illuminate/database": "^10.0|^11.0|^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "NextSyntaxTech\\DevZone\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "NextSyntaxTech\\DevZone\\DevZoneServiceProvider"
+            ],
+            "aliases": {}
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
