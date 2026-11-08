@@ -16,10 +16,16 @@ class DevZoneService
     {
         $dbConnection = config('database.default');
         $dbConfig = config("database.connections.{$dbConnection}", []);
-        $dbName = $dbConfig['database'] ?? 'N/A';
-        $dbHost = $dbConfig['host'] ?? 'N/A';
-        $dbPort = $dbConfig['port'] ?? 3306;
+        $rawDbName = $dbConfig['database'] ?? 'N/A';
+        $dbHost = $dbConfig['host'] ?? '127.0.0.1';
+        $dbPort = $dbConfig['port'] ?? ($dbConnection === 'pgsql' ? 5432 : 3306);
         $dbCharset = $dbConfig['charset'] ?? 'utf8mb4';
+
+        // Clean database name for display (strip long local filesystem paths for SQLite)
+        $dbDisplayName = $rawDbName;
+        if ($dbConnection === 'sqlite' || stripos($rawDbName, '.sqlite') !== false) {
+            $dbDisplayName = basename($rawDbName) ?: 'database.sqlite';
+        }
 
         // Detect Database Engine and Server Version (MariaDB, MySQL, PostgreSQL, SQLite, etc.)
         $dbVersion = 'N/A';
@@ -124,7 +130,8 @@ class DevZoneService
             'db_engine'       => $dbEngine,
             'db_version'      => $dbVersion,
             'db_short_version'=> $dbShortVersion,
-            'db_name'         => $dbName,
+            'db_name'         => $dbDisplayName,
+            'db_raw_name'     => $rawDbName,
             'db_host'         => $dbHost,
             'db_port'         => $dbPort,
             'db_charset'      => $dbCharset,
@@ -817,34 +824,46 @@ class DevZoneService
     }
 
     /**
-     * First-time setup: Save master passkey and admin email to .env.
+     * First-time setup: Save master passkey and admin email to config and .env.
      */
     public function saveSetupCredentials(string $email, string $passkey, string $path = 'developer-panel'): bool
     {
+        $updated = false;
+
+        // 1. Update .env if present
         $envPath = base_path('.env');
-        if (!File::exists($envPath)) {
-            return false;
-        }
+        if (File::exists($envPath)) {
+            $envContent = File::get($envPath);
+            $keys = [
+                'DEVZONE_ENABLED'         => 'true',
+                'DEVZONE_PATH'            => $path,
+                'DEVZONE_KEY'             => $passkey,
+                'DEVZONE_EMAIL'           => $email,
+                'DEVZONE_SETUP_COMPLETED' => 'true',
+            ];
 
-        $envContent = File::get($envPath);
-
-        $keys = [
-            'DEVZONE_ENABLED'         => 'true',
-            'DEVZONE_PATH'            => $path,
-            'DEVZONE_KEY'             => $passkey,
-            'DEVZONE_EMAIL'           => $email,
-            'DEVZONE_SETUP_COMPLETED' => 'true',
-        ];
-
-        foreach ($keys as $k => $v) {
-            if (preg_match("/^{$k}=.*/m", $envContent)) {
-                $envContent = preg_replace("/^{$k}=.*/m", "{$k}={$v}", $envContent);
-            } else {
-                $envContent .= "\n{$k}={$v}";
+            foreach ($keys as $k => $v) {
+                if (preg_match("/^{$k}=.*/m", $envContent)) {
+                    $envContent = preg_replace("/^{$k}=.*/m", "{$k}={$v}", $envContent);
+                } else {
+                    $envContent .= "\n{$k}={$v}";
+                }
             }
+
+            File::put($envPath, $envContent);
+            $updated = true;
         }
 
-        File::put($envPath, $envContent);
+        // 2. Update config/devzone.php if published in host application
+        $configPath = config_path('devzone.php');
+        if (File::exists($configPath)) {
+            $configContent = File::get($configPath);
+            $configContent = preg_replace("/('passkey'\s*=>\s*env\('[^']+',\s*')[^']*('\))/", "\${1}{$passkey}\${2}", $configContent);
+            $configContent = preg_replace("/('admin_email'\s*=>\s*env\('[^']+',\s*')[^']*('\))/", "\${1}{$email}\${2}", $configContent);
+            $configContent = preg_replace("/('path'\s*=>\s*env\('[^']+',\s*')[^']*('\))/", "\${1}{$path}\${2}", $configContent);
+            File::put($configPath, $configContent);
+            $updated = true;
+        }
 
         try {
             Artisan::call('config:clear');
@@ -852,7 +871,7 @@ class DevZoneService
 
         $this->logActivity('Setup Completed', "Master credentials configured for {$email}", 'success');
 
-        return true;
+        return $updated;
     }
 
     /**

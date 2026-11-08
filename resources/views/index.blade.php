@@ -19,7 +19,7 @@
                 </div>
                 <div class="d-flex justify-content-between">
                     <span>Environment:</span>
-                    <span class="badge bg-{{ $systemInfo['app_env'] === 'production' ? 'danger' : 'success' }} px-1.5 py-0">{{ strtoupper($systemInfo['app_env']) }} (Debug: {{ $systemInfo['app_debug'] ? 'ON' : 'OFF' }})</span>
+                    <span class="badge bg-{{ $systemInfo['app_env'] === 'production' ? 'danger' : 'success' }} px-2 py-1">{{ strtoupper($systemInfo['app_env']) }} (Debug: {{ $systemInfo['app_debug'] ? 'ON' : 'OFF' }})</span>
                 </div>
             </div>
         </div>
@@ -60,8 +60,13 @@
                     <span class="fw-semibold text-main">{{ $systemInfo['table_count'] }} Tables</span>
                 </div>
                 <div class="d-flex justify-content-between">
-                    <span>Host / Port:</span>
-                    <span class="text-muted font-monospace">{{ $systemInfo['db_host'] }}:{{ $systemInfo['db_port'] ?? 3306 }}</span>
+                    @if($systemInfo['db_driver'] === 'sqlite')
+                        <span>Driver / Status:</span>
+                        <span class="text-success fw-semibold font-monospace small"><i class="bx bxs-circle me-1" style="font-size: 8px;"></i> SQLite (Active)</span>
+                    @else
+                        <span>Host / Port:</span>
+                        <span class="text-muted font-monospace">{{ $systemInfo['db_host'] }}:{{ $systemInfo['db_port'] ?? 3306 }}</span>
+                    @endif
                 </div>
             </div>
         </div>
@@ -96,7 +101,7 @@
     <div class="dev-nav-tab" data-tab="migrations" onclick="switchTab('migrations')">
         <i class="bx bx-layer"></i> Migrations 
         @if($systemInfo['migrations_pending'] > 0)
-            <span class="badge bg-warning text-dark px-1.5 py-0.5 rounded-pill" style="font-size: 10px;">{{ $systemInfo['migrations_pending'] }}</span>
+            <span class="badge bg-warning text-dark px-2 py-1 rounded-pill" style="font-size: 10px;">{{ $systemInfo['migrations_pending'] }}</span>
         @endif
     </div>
     <div class="dev-nav-tab" data-tab="seeders" onclick="switchTab('seeders')">
@@ -269,13 +274,19 @@
                                 <td class="env-label">Database Version:</td>
                                 <td class="env-val font-monospace small text-muted">{{ $systemInfo['db_version'] ?? 'N/A' }}</td>
                             </tr>
-                            <tr>
-                                <td class="env-label">Database Host:</td>
-                                <td class="env-val font-monospace small">{{ $systemInfo['db_host'] }}:{{ $systemInfo['db_port'] ?? 3306 }}</td>
-                            </tr>
+                            @if($systemInfo['db_driver'] !== 'sqlite')
+                                <tr>
+                                    <td class="env-label">Database Host:</td>
+                                    <td class="env-val font-monospace small">{{ $systemInfo['db_host'] }}:{{ $systemInfo['db_port'] ?? 3306 }}</td>
+                                </tr>
+                            @endif
                             <tr>
                                 <td class="env-label">Database Name:</td>
                                 <td class="env-val text-primary font-monospace">{{ $systemInfo['db_name'] }}</td>
+                            </tr>
+                            <tr>
+                                <td class="env-label">Connection Status:</td>
+                                <td class="env-val text-success small"><i class="bx bxs-circle me-1" style="font-size: 8px;"></i> Connected</td>
                             </tr>
                             <tr>
                                 <td class="env-label">Database Tables:</td>
