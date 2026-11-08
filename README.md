@@ -31,7 +31,7 @@
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Installation & Updates
 
 Add the GitHub repository to your project's `composer.json`:
 
@@ -48,6 +48,13 @@ Require the package via Composer:
 
 ```bash
 composer require nextsyntaxtech/devzone:dev-main
+```
+
+### Update Package
+To update DevZone to the latest version at any time:
+
+```bash
+composer update nextsyntaxtech/devzone
 ```
 
 ---
