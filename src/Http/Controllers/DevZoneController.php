@@ -264,10 +264,17 @@ class DevZoneController extends Controller
      */
     public function toggleDebug(Request $request): JsonResponse
     {
-        $enable = filter_var($request->input('enable'), FILTER_VALIDATE_BOOLEAN);
-        $result = $this->service->toggleAppDebug($enable);
-        $statusCode = ($result['success'] ?? false) ? 200 : 500;
-        return response()->json($result, $statusCode);
+        try {
+            $enable = filter_var($request->input('enable'), FILTER_VALIDATE_BOOLEAN);
+            $result = $this->service->toggleAppDebug($enable);
+            $statusCode = ($result['success'] ?? false) ? 200 : 500;
+            return response()->json($result, $statusCode);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error toggling debug mode: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -275,9 +282,16 @@ class DevZoneController extends Controller
      */
     public function createBackup(Request $request): JsonResponse
     {
-        $result = $this->service->createDatabaseBackup();
-        $statusCode = ($result['success'] ?? false) ? 200 : 500;
-        return response()->json($result, $statusCode);
+        try {
+            $result = $this->service->createDatabaseBackup();
+            $statusCode = ($result['success'] ?? false) ? 200 : 500;
+            return response()->json($result, $statusCode);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error creating database backup: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -305,12 +319,19 @@ class DevZoneController extends Controller
      */
     public function deleteBackup(Request $request, string $filename): JsonResponse
     {
-        $deleted = $this->service->deleteBackup($filename);
+        try {
+            $deleted = $this->service->deleteBackup($filename);
 
-        return response()->json([
-            'success' => $deleted,
-            'message' => $deleted ? "Backup {$filename} deleted." : "Failed to delete backup {$filename}.",
-        ], $deleted ? 200 : 404);
+            return response()->json([
+                'success' => $deleted,
+                'message' => $deleted ? "Backup {$filename} deleted." : "Failed to delete backup {$filename}.",
+            ], $deleted ? 200 : 404);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting backup: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -318,11 +339,18 @@ class DevZoneController extends Controller
      */
     public function clearLogs(Request $request): JsonResponse
     {
-        $cleared = $this->service->clearActivityLogs();
+        try {
+            $cleared = $this->service->clearActivityLogs();
 
-        return response()->json([
-            'success' => $cleared,
-            'message' => 'Activity logs cleared successfully.',
-        ], $cleared ? 200 : 500);
+            return response()->json([
+                'success' => $cleared,
+                'message' => 'Activity logs cleared successfully.',
+            ], $cleared ? 200 : 500);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error clearing activity logs: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

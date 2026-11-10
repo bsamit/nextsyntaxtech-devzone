@@ -910,8 +910,82 @@
     }
 
     // -------------------------------------------------------------
-    // AJAX Action Helpers
+    // AJAX Action Helpers & Request Wrapper
     // -------------------------------------------------------------
+    function getCsrfToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : (typeof csrfToken !== 'undefined' ? csrfToken : '');
+    }
+
+    async function devzoneFetch(url, options = {}) {
+        const defaultHeaders = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': getCsrfToken()
+        };
+
+        const config = {
+            ...options,
+            headers: {
+                ...defaultHeaders,
+                ...(options.headers || {})
+            }
+        };
+
+        if (config.body && typeof config.body === 'object' && !(config.body instanceof FormData)) {
+            config.body = JSON.stringify(config.body);
+        }
+
+        let response;
+        try {
+            response = await fetch(url, config);
+        } catch (networkErr) {
+            throw new Error('Network error or server unreachable: ' + networkErr.message);
+        }
+
+        const contentType = response.headers.get('content-type') || '';
+
+        // Handle non-JSON responses (419 Session Expired, 401 Redirect, 500 HTML error)
+        if (!contentType.includes('application/json')) {
+            if (response.status === 419) {
+                throw new Error('CSRF_EXPIRED');
+            }
+            if (response.status === 401) {
+                throw new Error('SESSION_EXPIRED');
+            }
+            throw new Error(`Server returned HTTP ${response.status} (${response.statusText || 'Non-JSON response'}). Please check server logs or refresh.`);
+        }
+
+        const data = await response.json();
+        return data;
+    }
+
+    function handleDevzoneError(err, fallbackMessage = 'Operation failed') {
+        Swal.close();
+        if (err.message === 'CSRF_EXPIRED') {
+            Swal.fire({
+                title: 'Session Expired',
+                text: 'Your security token (CSRF) has expired. Please refresh the page to continue.',
+                icon: 'warning',
+                confirmButtonText: 'Refresh Page',
+                confirmButtonColor: '#2563eb'
+            }).then(() => window.location.reload());
+            return;
+        }
+        if (err.message === 'SESSION_EXPIRED') {
+            Swal.fire({
+                title: 'Session Expired',
+                text: 'Developer session has expired. Please re-authenticate.',
+                icon: 'warning',
+                confirmButtonText: 'Log In',
+                confirmButtonColor: '#2563eb'
+            }).then(() => window.location.reload());
+            return;
+        }
+        Swal.fire('Error', err.message || fallbackMessage, 'error');
+    }
+
     function executeArtisanCommand(command) {
         Swal.fire({
             title: 'Execute Command?',
@@ -925,19 +999,15 @@
             if (result.isConfirmed) {
                 Swal.fire({ title: 'Executing...', text: `Running php artisan ${command}`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-                fetch('{{ route("devzone.artisan.run") }}', {
+                devzoneFetch('{{ route("devzone.artisan.run") }}', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify({ command: command })
+                    body: { command: command }
                 })
-                .then(r => r.json())
                 .then(res => {
                     Swal.close();
                     showTerminalModal(`php artisan ${command}`, res.output, res.message);
                 })
-                .catch(err => {
-                    Swal.fire('Error', err.message || 'Execution failed', 'error');
-                });
+                .catch(err => handleDevzoneError(err, 'Command execution failed'));
             }
         });
     }
@@ -955,12 +1025,10 @@
             if (result.isConfirmed) {
                 Swal.fire({ title: 'Migrating...', text: `Applying ${filename}`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-                fetch('{{ route("devzone.migration.run") }}', {
+                devzoneFetch('{{ route("devzone.migration.run") }}', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify({ mode: 'single', path: path })
+                    body: { mode: 'single', path: path }
                 })
-                .then(r => r.json())
                 .then(res => {
                     Swal.close();
                     showTerminalModal(`Migrate: ${filename}`, res.output, res.message);
@@ -968,7 +1036,7 @@
                         setTimeout(() => window.location.reload(), 2500);
                     }
                 })
-                .catch(err => Swal.fire('Error', err.message, 'error'));
+                .catch(err => handleDevzoneError(err, 'Migration failed'));
             }
         });
     }
@@ -986,12 +1054,10 @@
             if (result.isConfirmed) {
                 Swal.fire({ title: 'Migrating...', text: 'Executing pending migrations...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-                fetch('{{ route("devzone.migration.run") }}', {
+                devzoneFetch('{{ route("devzone.migration.run") }}', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify({ mode: 'all' })
+                    body: { mode: 'all' }
                 })
-                .then(r => r.json())
                 .then(res => {
                     Swal.close();
                     showTerminalModal('All Pending Migrations', res.output, res.message);
@@ -999,7 +1065,7 @@
                         setTimeout(() => window.location.reload(), 2500);
                     }
                 })
-                .catch(err => Swal.fire('Error', err.message, 'error'));
+                .catch(err => handleDevzoneError(err, 'Pending migrations execution failed'));
             }
         });
     }
@@ -1017,17 +1083,15 @@
             if (result.isConfirmed) {
                 Swal.fire({ title: 'Seeding...', text: `Executing ${seederClass}`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-                fetch('{{ route("devzone.seeder.run") }}', {
+                devzoneFetch('{{ route("devzone.seeder.run") }}', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify({ class: seederClass })
+                    body: { class: seederClass }
                 })
-                .then(r => r.json())
                 .then(res => {
                     Swal.close();
                     showTerminalModal(`Seeder: ${seederClass}`, res.output, res.message);
                 })
-                .catch(err => Swal.fire('Error', err.message, 'error'));
+                .catch(err => handleDevzoneError(err, 'Seeder execution failed'));
             }
         });
     }
@@ -1041,17 +1105,15 @@
             didOpen: () => Swal.showLoading() 
         });
 
-        fetch('{{ route("devzone.docs.generate") }}', {
+        devzoneFetch('{{ route("devzone.docs.generate") }}', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-            body: JSON.stringify({ driver: driver })
+            body: { driver: driver }
         })
-        .then(r => r.json())
         .then(res => {
             Swal.close();
             showTerminalModal(`${docLabel} Generation Output`, res.output, res.message);
         })
-        .catch(err => Swal.fire('Error', err.message || 'Generation failed', 'error'));
+        .catch(err => handleDevzoneError(err, `${docLabel} generation failed`));
     }
 
     function toggleDebugAction(enable) {
@@ -1068,16 +1130,18 @@
             if (result.isConfirmed) {
                 Swal.fire({ title: 'Updating...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-                fetch('{{ route("devzone.debug.toggle") }}', {
+                devzoneFetch('{{ route("devzone.debug.toggle") }}', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
-                    body: JSON.stringify({ enable: enable })
+                    body: { enable: enable }
                 })
-                .then(r => r.json())
                 .then(res => {
-                    Swal.fire('Success', res.message, 'success').then(() => window.location.reload());
+                    if (res.success) {
+                        Swal.fire('Success', res.message, 'success').then(() => window.location.reload());
+                    } else {
+                        Swal.fire('Failed', res.message || 'Unable to update APP_DEBUG', 'error');
+                    }
                 })
-                .catch(err => Swal.fire('Error', err.message, 'error'));
+                .catch(err => handleDevzoneError(err, 'Failed to toggle APP_DEBUG'));
             }
         });
     }
@@ -1095,11 +1159,9 @@
             if (result.isConfirmed) {
                 Swal.fire({ title: 'Creating Backup...', text: 'Dumping database tables... Please wait...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-                fetch('{{ route("devzone.backup.create") }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken }
+                devzoneFetch('{{ route("devzone.backup.create") }}', {
+                    method: 'POST'
                 })
-                .then(r => r.json())
                 .then(res => {
                     if (res.success) {
                         Swal.fire('Backup Created!', `${res.message} (${res.formatted_size})`, 'success').then(() => {
@@ -1110,7 +1172,7 @@
                         Swal.fire('Backup Failed', res.message, 'error');
                     }
                 })
-                .catch(err => Swal.fire('Error', err.message, 'error'));
+                .catch(err => handleDevzoneError(err, 'Database backup creation failed'));
             }
         });
     }
@@ -1126,15 +1188,13 @@
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
-                fetch(`{{ url(config('devzone.path', 'developer-panel') . '/backup/delete') }}/${encodeURIComponent(filename)}`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken }
+                devzoneFetch(`{{ url(config('devzone.path', 'developer-panel') . '/backup/delete') }}/${encodeURIComponent(filename)}`, {
+                    method: 'DELETE'
                 })
-                .then(r => r.json())
                 .then(res => {
                     Swal.fire('Deleted', res.message, 'success').then(() => window.location.reload());
                 })
-                .catch(err => Swal.fire('Error', err.message, 'error'));
+                .catch(err => handleDevzoneError(err, 'Failed to delete backup file'));
             }
         });
     }
@@ -1150,15 +1210,13 @@
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
-                fetch('{{ route("devzone.logs.clear") }}', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken }
+                devzoneFetch('{{ route("devzone.logs.clear") }}', {
+                    method: 'POST'
                 })
-                .then(r => r.json())
                 .then(res => {
                     Swal.fire('Cleared', res.message, 'success').then(() => window.location.reload());
                 })
-                .catch(err => Swal.fire('Error', err.message, 'error'));
+                .catch(err => handleDevzoneError(err, 'Failed to clear activity logs'));
             }
         });
     }

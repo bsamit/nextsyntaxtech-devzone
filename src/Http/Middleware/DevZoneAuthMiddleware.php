@@ -34,8 +34,14 @@ class DevZoneAuthMiddleware
         $timeout = config('devzone.session_timeout', 3600);
 
         // 3. Verify Session Authentication
+        $isJsonRequest = $request->expectsJson()
+            || $request->ajax()
+            || $request->isJson()
+            || str_contains((string) $request->header('Accept'), 'application/json')
+            || str_contains((string) $request->header('Content-Type'), 'application/json');
+
         if (!$request->session()->has($sessionKey) || $request->session()->get($sessionKey) !== true) {
-            if ($request->expectsJson() || $request->ajax()) {
+            if ($isJsonRequest) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthenticated developer session. Please authenticate with your access key.',
@@ -51,7 +57,7 @@ class DevZoneAuthMiddleware
         if ($authenticatedAt > 0 && (time() - $authenticatedAt) > $timeout) {
             $request->session()->forget([$sessionKey, $sessionTimeKey]);
 
-            if ($request->expectsJson() || $request->ajax()) {
+            if ($isJsonRequest) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Developer session has expired due to inactivity. Please log in again.',

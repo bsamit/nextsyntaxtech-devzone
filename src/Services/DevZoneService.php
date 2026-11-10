@@ -561,28 +561,54 @@ class DevZoneService
             ];
         }
 
-        $targetValue = $enable ? 'true' : 'false';
-        $envContent = File::get($envPath);
-
-        if (preg_match('/^APP_DEBUG=.*/m', $envContent)) {
-            $newContent = preg_replace('/^APP_DEBUG=.*/m', "APP_DEBUG={$targetValue}", $envContent);
-        } else {
-            $newContent = $envContent . "\nAPP_DEBUG={$targetValue}\n";
-        }
-
-        File::put($envPath, $newContent);
-
         try {
-            Artisan::call('config:clear');
-        } catch (\Throwable $e) {}
+            $targetValue = $enable ? 'true' : 'false';
+            $envContent = File::get($envPath);
 
-        $this->logActivity('Debug Mode Toggle', "APP_DEBUG set to {$targetValue}", 'info');
+            if (preg_match('/^APP_DEBUG=.*/m', $envContent)) {
+                $newContent = preg_replace('/^APP_DEBUG=.*/m', "APP_DEBUG={$targetValue}", $envContent);
+            } else {
+                $newContent = rtrim($envContent) . "\nAPP_DEBUG={$targetValue}\n";
+            }
 
-        return [
-            'success'   => true,
-            'message'   => "Application debug mode successfully set to {$targetValue}.",
-            'app_debug' => $enable,
-        ];
+            if (!is_writable($envPath)) {
+                @chmod($envPath, 0666);
+            }
+
+            $written = @file_put_contents($envPath, $newContent);
+            if ($written === false) {
+                return [
+                    'success' => false,
+                    'message' => 'Unable to write to .env file. Please check file permissions.',
+                ];
+            }
+
+            // Sync runtime environment for current PHP process
+            putenv("APP_DEBUG={$targetValue}");
+            $_ENV['APP_DEBUG'] = $targetValue;
+            $_SERVER['APP_DEBUG'] = $targetValue;
+            config(['app.debug' => $enable]);
+
+            try {
+                if (app()->configurationIsCached()) {
+                    Artisan::call('config:clear');
+                }
+            } catch (\Throwable $e) {}
+
+            $this->logActivity('Debug Mode Toggle', "APP_DEBUG set to {$targetValue}", 'info');
+
+            return [
+                'success'   => true,
+                'message'   => "Application debug mode successfully set to {$targetValue}.",
+                'app_debug' => $enable,
+            ];
+        } catch (\Throwable $e) {
+            $this->logActivity('Debug Mode Toggle', "Failed to toggle debug: " . $e->getMessage(), 'error');
+            return [
+                'success' => false,
+                'message' => 'Failed to update APP_DEBUG: ' . $e->getMessage(),
+            ];
+        }
     }
 
     /**
