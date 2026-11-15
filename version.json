@@ -1,0 +1,12 @@
+{
+    "version": "1.0.2",
+    "build": "839fedc",
+    "release_date": "2026-11-15",
+    "channel": "stable",
+    "package": "nextsyntaxtech/devzone",
+    "name": "nextSyntaxTech DevZone",
+    "developer": "Amit Saha",
+    "email": "nextsyntaxtech@gmail.com",
+    "updated_at": "2026-11-15 11:47:08",
+    "last_update_status": "success"
+}

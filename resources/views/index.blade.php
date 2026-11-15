@@ -340,12 +340,12 @@
         <div class="dev-card-header">
             <div>
                 <h6 class="fw-bold mb-0 text-main d-flex align-items-center gap-2 flex-wrap">
-                    <i class="bx bx-layer text-success"></i> Laravel Migration Files Directory
+                    <i class="bx bx-layer text-success"></i> Migration Files Directory
                     <span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold" style="font-size: 11px;">
-                        <i class="bx bx-sort-up"></i> Laravel Execution Sequence (1 &rarr; {{ count($migrations) }})
+                        <i class="bx bx-sort-up"></i> Execution Sequence (1 &rarr; {{ count($migrations) }})
                     </span>
                 </h6>
-                <small class="text-muted">Sequenced in exact Laravel chronological order so prerequisite tables execute first</small>
+                <small class="text-muted">Sequenced in exact migration chronological order so prerequisite tables execute first</small>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <button class="btn btn-action-primary" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);" onclick="runAllMigrationsAction()" {{ $systemInfo['migrations_pending'] == 0 ? 'disabled' : '' }}>
@@ -447,7 +447,7 @@
         <div class="dev-card-header">
             <div>
                 <h6 class="fw-bold mb-0 text-main d-flex align-items-center gap-2">
-                    <i class="bx bx-spa text-success"></i> Laravel Database Seeders
+                    <i class="bx bx-spa text-success"></i> Database Seeders
                 </h6>
                 <small class="text-muted">Execute individual seeders safely on demand</small>
             </div>
@@ -757,13 +757,13 @@
                 <h6 class="fw-bold mb-0 text-main d-flex align-items-center gap-2">
                     <i class="bx bx-bug text-warning"></i> Application Debugging Configuration
                 </h6>
-                <small class="text-muted">Safely toggle Laravel <code>APP_DEBUG</code> configuration in <code>.env</code></small>
+                <small class="text-muted">Safely toggle <code>APP_DEBUG</code> configuration in <code>.env</code></small>
             </div>
         </div>
         <div class="dev-card-body">
             <div class="row g-4 align-items-center">
                 <div class="col-lg-8">
-                    <h5 class="fw-bold text-main mb-2">Laravel Debugging Mode</h5>
+                    <h5 class="fw-bold text-main mb-2">Debugging Mode</h5>
                     <p class="text-muted small mb-4">
                         Enabling <code>APP_DEBUG</code> outputs verbose error details and stack traces to help developers trace bugs. 
                         In production environments, debugging should remain <strong>DISABLED</strong> to prevent leaking sensitive credentials.

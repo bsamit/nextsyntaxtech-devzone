@@ -148,5 +148,5 @@ NextSyntaxTech DevZone is open-sourced software licensed under the [MIT license]
 
 ## 👨‍💻 Author & Support
 
-- **Author:** NextSyntaxTech ([amitsaha.cse@gmail.com](mailto:amitsaha.cse@gmail.com))
+- **Author:** NextSyntaxTech ([nextsyntaxtech@gmail.com](mailto:nextsyntaxtech@gmail.com))
 - **Website:** [https://nextsyntaxtech.com](https://nextsyntaxtech.com)

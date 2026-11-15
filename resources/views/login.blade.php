@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ config('app.name', 'Laravel') }} - nextSyntaxTech DevZone Security Gateway</title>
+    <title>{{ config('app.name', 'NextSyntaxTech') }} - nextSyntaxTech DevZone Security Gateway</title>
     <!-- Local CSS Dependencies (Zero CDN, 100% Offline) -->
     <link href="{{ \NextSyntaxTech\DevZone\Services\DevZoneService::asset('css/bootstrap.min.css') }}" rel="stylesheet">
     <link href="{{ \NextSyntaxTech\DevZone\Services\DevZoneService::asset('css/boxicons.min.css') }}" rel="stylesheet">

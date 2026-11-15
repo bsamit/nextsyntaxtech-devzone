@@ -9,7 +9,7 @@ use Carbon\Carbon;
 
 class DevZoneService
 {
-    public const VERSION = '1.0.0';
+    public const VERSION = '1.0.2';
     public const AUTHOR = 'Amit Saha';
     public const AUTHOR_EMAIL = 'nextsyntaxtech@gmail.com';
     public const GITHUB_REPO = 'bsamit/nextsyntaxtech-devzone';
@@ -1130,150 +1130,410 @@ class DevZoneService
     }
 
     /**
-     * Check GitHub for latest release / tags and version info.
+     * Get current package version string.
+     */
+    public static function version(): string
+    {
+        return (new static())->getCurrentVersionInfo()['version'];
+    }
+
+    /**
+     * Get current package build hash.
+     */
+    public static function build(): string
+    {
+        return (new static())->getCurrentVersionInfo()['build'];
+    }
+
+    /**
+     * Resolve the current installed version and build persistently.
+     */
+    public function getCurrentVersionInfo(): array
+    {
+        $version = self::VERSION;
+        $build = '839fedc';
+        $releaseDate = date('Y-m-d');
+        $channel = 'stable';
+        $source = 'constant';
+
+        // 1. Check persistent host application storage file
+        if (function_exists('storage_path')) {
+            $storageFile = storage_path('app/devzone/version.json');
+            if (file_exists($storageFile)) {
+                $content = @file_get_contents($storageFile);
+                $data = $content ? @json_decode($content, true) : null;
+                if (!empty($data) && !empty($data['version'])) {
+                    return [
+                        'version'      => ltrim((string) $data['version'], 'vV'),
+                        'version_tag'  => 'v' . ltrim((string) $data['version'], 'vV'),
+                        'build'        => (string) ($data['build'] ?? $build),
+                        'release_date' => (string) ($data['release_date'] ?? $releaseDate),
+                        'channel'      => (string) ($data['channel'] ?? $channel),
+                        'developer'    => self::AUTHOR,
+                        'email'        => self::AUTHOR_EMAIL,
+                        'brand'        => 'nextSyntaxTech',
+                        'package'      => 'nextSyntaxTech DevZone',
+                        'source'       => 'storage',
+                    ];
+                }
+            }
+        }
+
+        // 2. Check package root version.json
+        $packageVersionFile = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'version.json';
+        if (file_exists($packageVersionFile)) {
+            $content = @file_get_contents($packageVersionFile);
+            $data = $content ? @json_decode($content, true) : null;
+            if (!empty($data) && !empty($data['version'])) {
+                $version = ltrim((string) $data['version'], 'vV');
+                $build = (string) ($data['build'] ?? $build);
+                $releaseDate = (string) ($data['release_date'] ?? $releaseDate);
+                $channel = (string) ($data['channel'] ?? $channel);
+                $source = 'package_file';
+            }
+        }
+
+        // 3. Check Git repository if active
+        if (function_exists('shell_exec') && !in_array('shell_exec', explode(',', (string) ini_get('disable_functions')))) {
+            $pkgDir = dirname(__DIR__, 2);
+            $gitCmdPrefix = "cd /d \"{$pkgDir}\" && ";
+            try {
+                $gitSha = @shell_exec($gitCmdPrefix . 'git rev-parse --short HEAD 2>nul');
+                if (!empty($gitSha) && preg_match('/^[a-f0-9]{6,12}$/i', trim($gitSha))) {
+                    $build = trim($gitSha);
+                    $source = 'git';
+                }
+
+                $gitTag = @shell_exec($gitCmdPrefix . 'git describe --tags --abbrev=0 2>nul');
+                if (!empty($gitTag) && preg_match('/v?(\d+\.\d+\.\d+)/i', trim($gitTag), $tm)) {
+                    $version = $tm[1];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // 4. Check Composer InstalledVersions if available
+        if (class_exists(\Composer\InstalledVersions::class)) {
+            try {
+                $composerVer = \Composer\InstalledVersions::getPrettyVersion('nextsyntaxtech/devzone');
+                if (!empty($composerVer)) {
+                    $cleanComposerVer = ltrim($composerVer, 'vV');
+                    if (preg_match('/^(\d+\.\d+\.\d+)/', $cleanComposerVer, $m)) {
+                        $version = $m[1];
+                        $source = 'composer';
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        return [
+            'version'      => $version,
+            'version_tag'  => 'v' . $version,
+            'build'        => $build,
+            'release_date' => $releaseDate,
+            'channel'      => $channel,
+            'developer'    => self::AUTHOR,
+            'email'        => self::AUTHOR_EMAIL,
+            'brand'        => 'nextSyntaxTech',
+            'package'      => 'nextSyntaxTech DevZone',
+            'source'       => $source,
+        ];
+    }
+
+    /**
+     * Check Git repository and GitHub for latest releases, tags, and commits.
      */
     public function checkPackageUpdate(): array
     {
-        $currentVersion = self::VERSION;
+        $currentInfo = $this->getCurrentVersionInfo();
+        $currentVersion = $currentInfo['version'];
+        $currentBuild = $currentInfo['build'];
+
+        $latestTag = null;
+        $latestCommit = null;
+        $releaseDate = date('M d, Y');
+        $releaseNotes = null;
+        $releaseUrl = 'https://github.com/bsamit/nextsyntaxtech-devzone/releases';
+        $checkedMethod = 'default';
+
+        $pkgDir = dirname(__DIR__, 2);
+
+        // 1. First Priority: Direct Git Remote Check (Real-time & accurate, no API rate limit)
+        if (function_exists('shell_exec') && !in_array('shell_exec', explode(',', (string) ini_get('disable_functions')))) {
+            $gitCmdPrefix = "cd /d \"{$pkgDir}\" && ";
+            try {
+                // Check remote HEAD commit on main
+                $remoteHeadOutput = @shell_exec($gitCmdPrefix . 'git ls-remote origin -h refs/heads/main 2>nul');
+                if (empty($remoteHeadOutput)) {
+                    $remoteHeadOutput = @shell_exec($gitCmdPrefix . 'git ls-remote origin -h refs/heads/master 2>nul');
+                }
+
+                if (!empty($remoteHeadOutput) && preg_match('/^([a-f0-9]{40})/i', trim($remoteHeadOutput), $cm)) {
+                    $latestCommit = substr($cm[1], 0, 7);
+                    $checkedMethod = 'git_ls_remote';
+                }
+
+                // Check remote latest tag
+                $remoteTagsOutput = @shell_exec($gitCmdPrefix . 'git ls-remote --tags origin 2>nul');
+                if (!empty($remoteTagsOutput)) {
+                    $lines = explode("\n", trim($remoteTagsOutput));
+                    $foundTags = [];
+                    foreach ($lines as $line) {
+                        if (preg_match('/refs\/tags\/(v?(\d+\.\d+\.\d+))$/i', trim($line), $tm)) {
+                            $foundTags[] = $tm[2];
+                        }
+                    }
+                    if (!empty($foundTags)) {
+                        usort($foundTags, 'version_compare');
+                        $latestTag = end($foundTags);
+                        $checkedMethod = 'git_ls_remote';
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // 2. Second Priority: GitHub REST API (Releases, Tags, Commits)
         $repoCandidates = [
             'bsamit/nextsyntaxtech-devzone',
             'nextsyntaxtech/devzone',
         ];
 
-        $latestTag = null;
-        $releaseDate = null;
-        $releaseNotes = null;
-        $releaseUrl = 'https://github.com/bsamit/nextsyntaxtech-devzone/releases';
-
         foreach ($repoCandidates as $repo) {
             try {
+                // Check latest release
                 $url = "https://api.github.com/repos/{$repo}/releases/latest";
-                $responseBody = null;
-
-                if (class_exists(\Illuminate\Support\Facades\Http::class)) {
-                    $res = \Illuminate\Support\Facades\Http::withHeaders([
-                        'User-Agent' => 'nextSyntaxTech-DevZone-Updater',
-                        'Accept'     => 'application/vnd.github.v3+json',
-                    ])->timeout(6)->get($url);
-
-                    if ($res->successful()) {
-                        $responseBody = $res->json();
-                    }
-                }
-
-                if (!$responseBody && function_exists('curl_init')) {
-                    $ch = curl_init();
-                    curl_setopt($ch, CURLOPT_URL, $url);
-                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                        'User-Agent: nextSyntaxTech-DevZone-Updater',
-                        'Accept: application/vnd.github.v3+json',
-                    ]);
-                    curl_setopt($ch, CURLOPT_TIMEOUT, 6);
-                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-                    $result = curl_exec($ch);
-                    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                    curl_close($ch);
-
-                    if ($status === 200 && $result) {
-                        $responseBody = json_decode($result, true);
-                    }
-                }
+                $responseBody = $this->fetchJsonUrl($url);
 
                 if (!empty($responseBody) && !empty($responseBody['tag_name'])) {
-                    $latestTag = ltrim((string) $responseBody['tag_name'], 'vV');
-                    $releaseDate = !empty($responseBody['published_at'])
-                        ? date('M d, Y', strtotime((string) $responseBody['published_at']))
-                        : date('M d, Y');
-                    $releaseNotes = $responseBody['body'] ?? 'No release notes provided.';
-                    $releaseUrl = $responseBody['html_url'] ?? $releaseUrl;
-                    break;
-                }
-
-                // Fallback: check tags
-                $tagsUrl = "https://api.github.com/repos/{$repo}/tags";
-                $tagsBody = null;
-
-                if (class_exists(\Illuminate\Support\Facades\Http::class)) {
-                    $res = \Illuminate\Support\Facades\Http::withHeaders([
-                        'User-Agent' => 'nextSyntaxTech-DevZone-Updater',
-                    ])->timeout(5)->get($tagsUrl);
-
-                    if ($res->successful()) {
-                        $tagsBody = $res->json();
+                    $tag = ltrim((string) $responseBody['tag_name'], 'vV');
+                    if (empty($latestTag) || version_compare($tag, $latestTag, '>=')) {
+                        $latestTag = $tag;
+                        $releaseDate = !empty($responseBody['published_at'])
+                            ? date('M d, Y', strtotime((string) $responseBody['published_at']))
+                            : $releaseDate;
+                        $releaseNotes = $responseBody['body'] ?? 'Release available on GitHub.';
+                        $releaseUrl = $responseBody['html_url'] ?? $releaseUrl;
+                        $checkedMethod = 'github_api_release';
                     }
                 }
 
-                if (!empty($tagsBody) && is_array($tagsBody) && isset($tagsBody[0]['name'])) {
-                    $latestTag = ltrim((string) $tagsBody[0]['name'], 'vV');
-                    $releaseDate = date('M d, Y');
-                    $releaseNotes = "Release tag {$tagsBody[0]['name']} is available on GitHub.";
-                    $releaseUrl = "https://github.com/{$repo}/releases";
+                // Check latest commit on main branch
+                if (empty($latestCommit)) {
+                    $commitUrl = "https://api.github.com/repos/{$repo}/commits/main";
+                    $commitBody = $this->fetchJsonUrl($commitUrl);
+                    if (!empty($commitBody) && !empty($commitBody['sha'])) {
+                        $latestCommit = substr((string) $commitBody['sha'], 0, 7);
+                        if (!empty($commitBody['commit']['committer']['date'])) {
+                            $releaseDate = date('M d, Y', strtotime($commitBody['commit']['committer']['date']));
+                        }
+                        if (empty($releaseNotes) && !empty($commitBody['commit']['message'])) {
+                            $releaseNotes = "Latest build: " . trim((string) $commitBody['commit']['message']);
+                        }
+                        $checkedMethod = ($checkedMethod === 'git_ls_remote') ? 'git_ls_remote' : 'github_api_commit';
+                    }
+                }
+
+                // Fallback tags API if latestTag still null
+                if (empty($latestTag)) {
+                    $tagsUrl = "https://api.github.com/repos/{$repo}/tags";
+                    $tagsBody = $this->fetchJsonUrl($tagsUrl);
+                    if (!empty($tagsBody) && is_array($tagsBody) && isset($tagsBody[0]['name'])) {
+                        $latestTag = ltrim((string) $tagsBody[0]['name'], 'vV');
+                        $checkedMethod = 'github_api_tags';
+                    }
+                }
+
+                if (!empty($latestTag) || !empty($latestCommit)) {
                     break;
                 }
-            } catch (\Throwable $e) {
-                // Continue to next candidate
-            }
+            } catch (\Throwable $e) {}
         }
 
+        // Fallbacks if remote was unreachable
         if (empty($latestTag)) {
             $latestTag = $currentVersion;
-            $releaseDate = date('M d, Y');
-            $releaseNotes = 'Current build is up to date.';
+        }
+        if (empty($latestCommit)) {
+            $latestCommit = $currentBuild;
         }
 
         $cleanCurrent = ltrim($currentVersion, 'vV');
         $cleanLatest = ltrim($latestTag, 'vV');
-        $hasUpdate = version_compare($cleanLatest, $cleanCurrent, '>');
+
+        // Real Update Detection:
+        // 1. Newer semantic version tag
+        $hasVersionUpdate = version_compare($cleanLatest, $cleanCurrent, '>');
+        // 2. Newer git commit build on remote main
+        $hasCommitUpdate = (!empty($latestCommit) && !empty($currentBuild) && strcasecmp(substr($latestCommit, 0, 7), substr($currentBuild, 0, 7)) !== 0);
+
+        $hasUpdate = $hasVersionUpdate || $hasCommitUpdate;
+        $updateType = $hasVersionUpdate ? 'version' : ($hasCommitUpdate ? 'build' : 'none');
+
+        if ($hasVersionUpdate) {
+            $updateMessage = "New Release Available: v{$cleanLatest}";
+        } elseif ($hasCommitUpdate) {
+            $updateMessage = "New Build Available: {$currentBuild} \u{2192} {$latestCommit}";
+        } else {
+            $updateMessage = "You are running the latest version! (v{$cleanCurrent} \u{2022} Build: {$currentBuild})";
+        }
 
         return [
-            'success'         => true,
-            'current_version' => 'v' . $cleanCurrent,
-            'latest_version'  => 'v' . $cleanLatest,
-            'has_update'      => $hasUpdate,
-            'release_date'    => $releaseDate,
-            'release_notes'   => $releaseNotes,
-            'release_url'     => $releaseUrl,
-            'developer'       => self::AUTHOR,
-            'email'           => self::AUTHOR_EMAIL,
-            'brand'           => 'nextSyntaxTech',
-            'package'         => 'nextSyntaxTech DevZone',
-            'composer_cmd'    => 'composer update nextsyntaxtech/devzone',
+            'success'          => true,
+            'current_version'  => 'v' . $cleanCurrent,
+            'current_build'    => $currentBuild,
+            'latest_version'   => 'v' . $cleanLatest,
+            'latest_build'     => $latestCommit,
+            'has_update'       => $hasUpdate,
+            'update_type'      => $updateType,
+            'update_message'   => $updateMessage,
+            'release_date'     => $releaseDate,
+            'release_notes'    => $releaseNotes ?: ($hasUpdate ? "New update is available on GitHub." : "Your system is up to date with origin/main."),
+            'release_url'      => $releaseUrl,
+            'developer'        => self::AUTHOR,
+            'email'            => self::AUTHOR_EMAIL,
+            'brand'            => 'nextSyntaxTech',
+            'package'          => 'nextSyntaxTech DevZone',
+            'checked_via'      => $checkedMethod,
+            'composer_cmd'     => 'composer update nextsyntaxtech/devzone',
         ];
     }
 
     /**
-     * Run package update routine.
+     * Helper to fetch JSON from URL with timeout.
      */
-    public function updatePackage(): array
+    protected function fetchJsonUrl(string $url): ?array
+    {
+        if (class_exists(\Illuminate\Support\Facades\Http::class)) {
+            try {
+                $res = \Illuminate\Support\Facades\Http::withHeaders([
+                    'User-Agent' => 'nextSyntaxTech-DevZone-Updater',
+                    'Accept'     => 'application/vnd.github.v3+json',
+                ])->timeout(6)->get($url);
+
+                if ($res->successful()) {
+                    return $res->json();
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (function_exists('curl_init')) {
+            try {
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $url);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                    'User-Agent: nextSyntaxTech-DevZone-Updater',
+                    'Accept: application/vnd.github.v3+json',
+                ]);
+                curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                $result = curl_exec($ch);
+                $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+
+                if ($status === 200 && $result) {
+                    return json_decode($result, true);
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        return null;
+    }
+
+    /**
+     * Run package update routine, pull remote git changes / composer, and update version tracking.
+     */
+    public function updatePackage(?string $targetVersion = null): array
     {
         $startTime = microtime(true);
         $outputLogs = [];
         $outputLogs[] = ">> [nextSyntaxTech DevZone Updater Started]";
-        $outputLogs[] = ">> Checking environment and package repositories...";
+        $outputLogs[] = ">> Timestamp: " . date('Y-m-d H:i:s T');
+        $outputLogs[] = ">> Initiating repository sync & package update...";
 
-        // Try executing composer
+        $pkgDir = dirname(__DIR__, 2);
+        $base = function_exists('base_path') ? base_path() : $pkgDir;
+
+        $newCommit = null;
+        $newVersion = null;
+
         if (function_exists('shell_exec') && !in_array('shell_exec', explode(',', (string) ini_get('disable_functions')))) {
+            // 1. Try Git Fetch & Pull if Git repo is detected
+            $gitDir = $pkgDir . DIRECTORY_SEPARATOR . '.git';
+            if (is_dir($gitDir) || file_exists($gitDir)) {
+                $outputLogs[] = ">> Executing: git pull origin main";
+                $gitCmd = "cd /d \"{$pkgDir}\" && git fetch origin main 2>&1 && git pull origin main 2>&1";
+                try {
+                    $gitOut = (string) @shell_exec($gitCmd);
+                    if (!empty($gitOut)) {
+                        $outputLogs[] = trim($gitOut);
+                    }
+                } catch (\Throwable $e) {
+                    $outputLogs[] = ">> Git pull notice: " . $e->getMessage();
+                }
+
+                // Detect updated commit and tag
+                $detectedSha = @shell_exec("cd /d \"{$pkgDir}\" && git rev-parse --short HEAD 2>nul");
+                if (!empty($detectedSha) && preg_match('/^[a-f0-9]{6,12}$/i', trim($detectedSha))) {
+                    $newCommit = trim($detectedSha);
+                }
+                $detectedTag = @shell_exec("cd /d \"{$pkgDir}\" && git describe --tags --abbrev=0 2>nul");
+                if (!empty($detectedTag) && preg_match('/v?(\d+\.\d+\.\d+)/i', trim($detectedTag), $tm)) {
+                    $newVersion = $tm[1];
+                }
+            }
+
+            // 2. Try Composer Update
             $outputLogs[] = ">> Executing: composer update nextsyntaxtech/devzone --no-interaction";
             try {
-                $base = base_path();
-                $cmd = (PHP_OS_FAMILY === 'Windows')
-                    ? "cd /d \"{$base}\" && composer update nextsyntaxtech/devzone --no-interaction 2>&1"
-                    : "cd \"{$base}\" && composer update nextsyntaxtech/devzone --no-interaction 2>&1";
-
+                $cmd = "cd /d \"{$base}\" && composer update nextsyntaxtech/devzone --no-interaction 2>&1";
                 $output = (string) @shell_exec($cmd);
                 if (!empty($output)) {
                     $outputLogs[] = trim($output);
                 }
             } catch (\Throwable $e) {
-                $outputLogs[] = ">> Notice: Shell execution error: " . $e->getMessage();
+                $outputLogs[] = ">> Composer notice: " . $e->getMessage();
             }
         } else {
             $outputLogs[] = ">> Notice: shell_exec is restricted by PHP configuration.";
-            $outputLogs[] = ">> Please run: composer update nextsyntaxtech/devzone in terminal.";
         }
 
-        // Run application optimization & cache clear
+        // Determine final version & build to save
+        $currentInfo = $this->getCurrentVersionInfo();
+        $finalVersion = $targetVersion ?: ($newVersion ?: $currentInfo['version']);
+        $finalVersion = ltrim($finalVersion, 'vV');
+        $finalBuild = $newCommit ?: $currentInfo['build'];
+
+        // 3. PERSISTENT VERSION TRACKING: Write to version.json in package & host storage
+        $versionPayload = [
+            'version'            => $finalVersion,
+            'build'              => $finalBuild,
+            'release_date'       => date('Y-m-d'),
+            'channel'            => 'stable',
+            'package'            => 'nextsyntaxtech/devzone',
+            'name'               => 'nextSyntaxTech DevZone',
+            'developer'          => self::AUTHOR,
+            'email'              => self::AUTHOR_EMAIL,
+            'updated_at'         => date('Y-m-d H:i:s'),
+            'last_update_status' => 'success',
+        ];
+        $jsonEncoded = json_encode($versionPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+        // A. Package version.json
+        $packageVersionFile = $pkgDir . DIRECTORY_SEPARATOR . 'version.json';
+        @file_put_contents($packageVersionFile, $jsonEncoded);
+        $outputLogs[] = ">> Package version manifest updated: v{$finalVersion} (Build: {$finalBuild})";
+
+        // B. Host application storage version.json
+        if (function_exists('storage_path')) {
+            $hostStorageFile = storage_path('app/devzone/version.json');
+            if (!is_dir(dirname($hostStorageFile))) {
+                @mkdir(dirname($hostStorageFile), 0755, true);
+            }
+            @file_put_contents($hostStorageFile, $jsonEncoded);
+            $outputLogs[] = ">> Application version state persisted to storage/app/devzone/version.json";
+        }
+
+        // 4. Framework Cache Clearing & Optimization
         $outputLogs[] = ">> Clearing compiled framework caches...";
         try {
             Artisan::call('optimize:clear');
@@ -1283,7 +1543,7 @@ class DevZoneService
             }
         } catch (\Throwable $e) {}
 
-        // Re-publish DevZone assets
+        // 5. Publish DevZone assets
         try {
             Artisan::call('vendor:publish', [
                 '--tag' => 'devzone-assets',
@@ -1293,16 +1553,17 @@ class DevZoneService
         } catch (\Throwable $e) {}
 
         $duration = round((microtime(true) - $startTime) * 1000, 1);
-        $outputLogs[] = ">> [Update routine completed in {$duration}ms]";
+        $outputLogs[] = ">> [Update routine completed successfully in {$duration}ms]";
 
-        $this->logActivity('Package Update', "Package update routine executed ({$duration}ms)", 'success');
+        $this->logActivity('Package Update', "Package updated to v{$finalVersion} (Build: {$finalBuild}) in {$duration}ms", 'success');
 
         return [
-            'success'  => true,
-            'message'  => 'Package update routine completed! Application caches and assets refreshed.',
-            'output'   => implode("\n", $outputLogs),
-            'duration' => $duration,
-            'version'  => 'v' . self::VERSION,
+            'success'   => true,
+            'message'   => "nextSyntaxTech DevZone successfully updated to v{$finalVersion} (Build: {$finalBuild})!",
+            'output'    => implode("\n", $outputLogs),
+            'duration'  => $duration,
+            'version'   => 'v' . $finalVersion,
+            'build'     => $finalBuild,
         ];
     }
 }

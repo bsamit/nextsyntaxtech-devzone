@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name', 'Laravel') }} - NextSyntaxTech DevZone</title>
+    <title>{{ config('app.name', 'NextSyntaxTech') }} - NextSyntaxTech DevZone</title>
 
     <!-- Immediate Theme Application to prevent FOUC (Flash of Unstyled Content) -->
     <script>
@@ -439,6 +439,39 @@
             border-color: var(--border-light);
         }
 
+        /* Icon-Only Header Buttons */
+        .btn-header-icon {
+            width: 36px;
+            height: 36px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            background: var(--btn-sec-bg);
+            color: var(--btn-sec-text) !important;
+            border: 1px solid var(--btn-sec-border);
+            font-size: 18px;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: pointer;
+            text-decoration: none;
+            position: relative;
+        }
+        .btn-header-icon:hover {
+            background: var(--btn-sec-hover);
+            border-color: var(--border-light);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        .btn-header-icon:active {
+            transform: translateY(0);
+        }
+        .btn-header-icon.btn-danger-hover:hover {
+            background: rgba(239, 68, 68, 0.12) !important;
+            border-color: rgba(239, 68, 68, 0.4) !important;
+            color: #ef4444 !important;
+        }
+
         /* Theme Toggle Button */
         .theme-toggle-btn {
             background: var(--btn-sec-bg);
@@ -794,32 +827,37 @@
             </div>
 
             <div class="d-flex align-items-center gap-2 flex-wrap">
-                <!-- Change Credentials Button -->
-                <button type="button" class="btn btn-action-secondary" data-bs-toggle="modal" data-bs-target="#changeCredentialsModal" title="Security & Master Passkey Settings">
-                    <i class="bx bx-shield-quarter text-primary"></i> <span class="d-none d-sm-inline">Credentials</span>
+                <!-- Home Page (Main Site Base URL in New Tab) -->
+                <a href="{{ url('/') }}" target="_blank" rel="noopener noreferrer" class="btn-header-icon" title="Go to Application Home (Main Site)">
+                    <i class="bx bx-home-alt text-primary"></i>
+                </a>
+
+                <!-- Change Master Credentials Button (Icon Only) -->
+                <button type="button" class="btn-header-icon" data-bs-toggle="modal" data-bs-target="#changeCredentialsModal" title="Security & Master Credentials">
+                    <i class="bx bx-shield-quarter text-primary"></i>
                 </button>
 
-                <!-- About & Version Updates Button -->
-                <button type="button" class="btn btn-action-secondary" data-bs-toggle="modal" data-bs-target="#aboutDevZoneModal" title="About nextSyntaxTech DevZone & Updates">
-                    <i class="bx bx-info-circle text-info"></i> <span class="d-none d-sm-inline">About</span>
+                <!-- About & Version Updates Button (Icon Only) -->
+                <button type="button" class="btn-header-icon" data-bs-toggle="modal" data-bs-target="#aboutDevZoneModal" title="About nextSyntaxTech DevZone & Updates">
+                    <i class="bx bx-info-circle text-info"></i>
                 </button>
 
-                <!-- Theme Toggle Button -->
-                <button type="button" class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle Light / Dark Theme">
-                    <i class="bx bx-moon" id="themeIcon"></i>
-                    <span id="themeLabel">Dark Mode</span>
+                <!-- Theme Toggle Button (Icon Only) -->
+                <button type="button" class="btn-header-icon" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle Dark / Light Theme">
+                    <i class="bx bx-moon text-primary" id="themeIcon"></i>
                 </button>
 
                 @if(!empty($apiDocInfo) && !empty($apiDocInfo['has_api_docs']) && $apiDocInfo['active_type'] !== 'none' && !empty($apiDocInfo['primary_url']))
-                    <a href="{{ $apiDocInfo['primary_url'] }}" target="_blank" class="btn btn-action-secondary" title="Open {{ $apiDocInfo['primary_label'] }}">
-                        <i class="bx bx-file"></i> {{ $apiDocInfo['primary_label'] }} <i class="bx bx-link-external small"></i>
+                    <a href="{{ $apiDocInfo['primary_url'] }}" target="_blank" rel="noopener noreferrer" class="btn-header-icon" title="Open {{ $apiDocInfo['primary_label'] }}">
+                        <i class="bx bx-file text-warning"></i>
                     </a>
                 @endif
 
-                <form action="{{ route('devzone.logout') }}" method="POST" class="d-inline">
+                <!-- Logout Button (Icon Only) -->
+                <form action="{{ route('devzone.logout') }}" method="POST" class="d-inline m-0 p-0">
                     @csrf
-                    <button type="submit" class="btn btn-action-secondary text-danger border-danger-subtle" title="Lock & Close Developer Session">
-                        <i class="bx bx-log-out"></i> Logout
+                    <button type="submit" class="btn-header-icon btn-danger-hover text-danger border-danger-subtle" title="Lock & Close Developer Session">
+                        <i class="bx bx-log-out"></i>
                     </button>
                 </form>
             </div>
@@ -960,7 +998,7 @@
                             <span class="heart-pulse-wave-ring"></span>
                             <i class="bx bxs-heart text-danger heart-beat-anim" style="font-size: 10px;"></i>
                         </span>
-                        <small>v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::VERSION }}</small>
+                        <small id="aboutModalVersionPill">v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::version() }}</small>
                     </span>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
@@ -971,8 +1009,8 @@
                             <div class="brand-next-syntax-tech fs-5">
                                 <span class="b-next">next</span><span class="b-syntax">Syntax</span><span class="b-tech">Tech</span> <span class="badge bg-primary text-white fs-6 ms-1">DevZone</span>
                             </div>
-                            <span class="badge bg-success-subtle text-success border border-success-subtle font-monospace">
-                                Installed: v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::VERSION }}
+                            <span class="badge bg-success-subtle text-success border border-success-subtle font-monospace" id="aboutModalInstalledBadge">
+                                Installed: v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::version() }} ({{ \NextSyntaxTech\DevZone\Services\DevZoneService::build() }})
                             </span>
                         </div>
                         <p class="small text-muted mb-3">Enterprise Developer Control & Maintenance Panel for Laravel applications.</p>
@@ -1008,11 +1046,11 @@
                         <div id="updateStatusContainer" class="p-3 rounded-2 border bg-card small mt-2">
                             <div class="d-flex align-items-center justify-content-between mb-1">
                                 <span class="text-muted">Current Version:</span>
-                                <span class="font-monospace fw-bold text-main">v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::VERSION }}</span>
+                                <span class="font-monospace fw-bold text-main" id="currentInstalledVersion">v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::version() }} (Build: {{ \NextSyntaxTech\DevZone\Services\DevZoneService::build() }})</span>
                             </div>
                             <div class="d-flex align-items-center justify-content-between mb-1">
                                 <span class="text-muted">Latest Release:</span>
-                                <span class="font-monospace fw-bold text-info" id="latestReleaseVersion">v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::VERSION }}</span>
+                                <span class="font-monospace fw-bold text-info" id="latestReleaseVersion">v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::version() }}</span>
                             </div>
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <span class="text-muted">Release Date:</span>
@@ -1021,7 +1059,7 @@
 
                             <div id="updateBadgeContainer" class="mt-2 text-center p-2 rounded-2" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25);">
                                 <span class="text-success fw-bold d-flex align-items-center justify-content-center gap-1" id="updateBadgeText">
-                                    <i class="bx bx-check-circle"></i> You are running the latest version!
+                                    <i class="bx bx-check-circle"></i> You are running the latest version! (v{{ \NextSyntaxTech\DevZone\Services\DevZoneService::version() }} &bull; Build: {{ \NextSyntaxTech\DevZone\Services\DevZoneService::build() }})
                                 </span>
                             </div>
 
@@ -1061,12 +1099,15 @@
         function applyTheme(theme) {
             document.documentElement.setAttribute('data-theme', theme);
             const icon = document.getElementById('themeIcon');
+            const btn = document.getElementById('themeToggleBtn');
             const label = document.getElementById('themeLabel');
             if (theme === 'dark') {
                 if (icon) icon.className = 'bx bx-sun text-warning';
+                if (btn) btn.title = 'Switch to Light Mode';
                 if (label) label.textContent = 'Light Mode';
             } else {
                 if (icon) icon.className = 'bx bx-moon text-primary';
+                if (btn) btn.title = 'Switch to Dark Mode';
                 if (label) label.textContent = 'Dark Mode';
             }
         }
@@ -1274,7 +1315,14 @@
 
                 const data = await response.json();
 
-                if (latestVerEl) latestVerEl.textContent = data.latest_version || 'v1.0.0';
+                const currentInstalledEl = document.getElementById('currentInstalledVersion');
+                if (currentInstalledEl && data.current_version) {
+                    currentInstalledEl.textContent = `${data.current_version} (Build: ${data.current_build || 'latest'})`;
+                }
+
+                if (latestVerEl) {
+                    latestVerEl.textContent = data.latest_version ? `${data.latest_version} (${data.latest_build || 'latest'})` : 'v1.0.2';
+                }
                 if (latestDateEl) latestDateEl.textContent = data.release_date || 'Recent';
 
                 if (data.has_update) {
@@ -1285,14 +1333,18 @@
                     }
                     if (badgeText) {
                         badgeText.className = 'text-warning fw-bold d-flex align-items-center justify-content-center gap-1';
-                        badgeText.innerHTML = `<i class="bx bx-bell"></i> New Release Available: <b>${data.latest_version}</b>`;
+                        badgeText.innerHTML = `<i class="bx bx-bell"></i> ${data.update_message || ('New Update Available: ' + data.latest_version)}`;
                     }
                     if (actionArea) actionArea.classList.remove('d-none');
-                    if (updateBtnLabel) updateBtnLabel.textContent = `Update to ${data.latest_version}`;
+                    if (updateBtnLabel) {
+                        updateBtnLabel.textContent = (data.update_type === 'build')
+                            ? `Install Build Update (${data.latest_build})`
+                            : `Update to ${data.latest_version}`;
+                    }
 
                     DevZoneAlert.toast({
                         icon: 'info',
-                        title: `New release ${data.latest_version} is available!`,
+                        title: data.update_message || `New update ${data.latest_version} is available!`,
                         timer: 3500
                     });
                 } else {
@@ -1303,7 +1355,7 @@
                     }
                     if (badgeText) {
                         badgeText.className = 'text-success fw-bold d-flex align-items-center justify-content-center gap-1';
-                        badgeText.innerHTML = `<i class="bx bx-check-circle"></i> You are running the latest version! (${data.current_version})`;
+                        badgeText.innerHTML = `<i class="bx bx-check-circle"></i> You are running the latest version! (${data.current_version} &bull; Build: ${data.current_build})`;
                     }
                     if (actionArea) actionArea.classList.add('d-none');
 

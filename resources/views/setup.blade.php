@@ -410,7 +410,7 @@
         <!-- Diagnostic Readout -->
         <div class="cmd-readout">
             <div><span class="cmd-line-prompt">> NOTICE:</span> <span class="cmd-highlight">Fresh Installation Detected</span></div>
-            <div><span class="cmd-line-prompt">> TARGET:</span> {{ config('app.name', 'Laravel') }} [{{ strtoupper(app()->environment()) }}]</div>
+            <div><span class="cmd-line-prompt">> TARGET:</span> {{ config('app.name', 'NextSyntaxTech') }} [{{ strtoupper(app()->environment()) }}]</div>
             <div><span class="cmd-line-prompt">> ACTION:</span> Configure your custom master developer credentials below.</div>
         </div>
 
