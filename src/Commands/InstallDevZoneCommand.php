@@ -31,22 +31,26 @@ class InstallDevZoneCommand extends Command
     public function handle(DevZoneService $service): int
     {
         $this->newLine();
-        $this->line('  <bg=blue;fg=white;options=bold> NextSyntaxTech DevZone </> <fg=cyan;options=bold>Enterprise Installation Wizard</>');
+        $this->line('  <bg=blue;fg=white;options=bold> nextSyntaxTech DevZone </> <fg=cyan;options=bold>Installation & Setup Wizard</>');
         $this->line('  <fg=gray>Independent Developer Control & Maintenance Panel</>');
         $this->newLine();
 
-        // 1. Publish Configuration
-        $this->info('Publishing DevZone configuration file...');
+        // 1. Publish Configuration & Local Assets
+        $this->info('Publishing DevZone configuration file and local assets...');
         $this->call('vendor:publish', [
             '--tag' => 'devzone-config',
+            '--force' => true,
+        ]);
+        $this->call('vendor:publish', [
+            '--tag' => 'devzone-assets',
             '--force' => true,
         ]);
 
         // 2. Obtain Parameters (from options or interactive prompts)
         $email = $this->option('email');
         if (empty($email)) {
-            $defaultEmail = config('devzone.admin_email', 'amitsaha.cse@gmail.com');
-            $email = $this->ask('Enter Authorized Administrator Email', $defaultEmail);
+            $defaultEmail = config('devzone.admin_email');
+            $email = $this->ask('Enter Authorized Administrator Email', $defaultEmail ?: null);
         }
 
         while (!filter_var($email, FILTER_VALIDATE_EMAIL)) {

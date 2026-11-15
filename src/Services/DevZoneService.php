@@ -9,6 +9,11 @@ use Carbon\Carbon;
 
 class DevZoneService
 {
+    public const VERSION = '1.0.0';
+    public const AUTHOR = 'Amit Saha';
+    public const AUTHOR_EMAIL = 'nextsyntaxtech@gmail.com';
+    public const GITHUB_REPO = 'bsamit/nextsyntaxtech-devzone';
+
     /**
      * Get system health and environment statistics.
      */
@@ -17,6 +22,7 @@ class DevZoneService
         $dbConnection = config('database.default');
         $dbConfig = config("database.connections.{$dbConnection}", []);
         $rawDbName = $dbConfig['database'] ?? 'N/A';
+        $dbName = $rawDbName;
         $dbHost = $dbConfig['host'] ?? '127.0.0.1';
         $dbPort = $dbConfig['port'] ?? ($dbConnection === 'pgsql' ? 5432 : 3306);
         $dbCharset = $dbConfig['charset'] ?? 'utf8mb4';
@@ -216,7 +222,17 @@ class DevZoneService
             }
         }
 
-        usort($migrations, fn($a, $b) => strcmp($b['filename'], $a['filename']));
+        // Sort in exact Laravel chronological execution sequence (Ascending: 1, 2, 3...)
+        usort($migrations, function ($a, $b) {
+            $cmp = strcmp($a['filename'], $b['filename']);
+            return $cmp !== 0 ? $cmp : strcmp($a['relative_path'], $b['relative_path']);
+        });
+
+        // Attach explicit 1-based execution sequence numbering
+        foreach ($migrations as $idx => &$mig) {
+            $mig['sequence'] = $idx + 1;
+        }
+        unset($mig);
 
         return $migrations;
     }
@@ -451,41 +467,79 @@ class DevZoneService
      */
     public function getApiDocInfo(): array
     {
-        $allCommands = array_keys(Artisan::all());
+        $setting = config('devzone.api_docs', 'auto');
+        if ($setting === false || $setting === 'none' || $setting === 'off') {
+            return [
+                'has_api_docs'  => false,
+                'is_available'  => false,
+                'active_type'   => 'none',
+                'has_swagger'   => false,
+                'has_scribe'    => false,
+                'primary_url'   => null,
+                'primary_label' => null,
+                'title'         => null,
+                'swagger'       => ['installed' => false],
+                'scribe'        => ['installed' => false],
+            ];
+        }
 
+        $allCommands = [];
+        try {
+            $allCommands = array_keys(Artisan::all());
+        } catch (\Throwable $e) {
+            // Artisan command loading fallback
+        }
+
+        // Detect L5-Swagger (OpenAPI 3.0)
         $hasSwagger = in_array('l5-swagger:generate', $allCommands) 
             || class_exists(\L5Swagger\L5SwaggerServiceProvider::class) 
-            || config('l5-swagger') !== null;
+            || (function_exists('config') && config('l5-swagger') !== null);
 
+        // Detect Knuckles Scribe
         $hasScribe = in_array('scribe:generate', $allCommands) 
             || class_exists(\Knuckles\Scribe\ScribeServiceProvider::class) 
-            || config('scribe') !== null;
+            || (function_exists('config') && config('scribe') !== null);
+
+        // Config overrides
+        if ($setting === 'swagger') {
+            $hasScribe = false;
+        } elseif ($setting === 'scribe') {
+            $hasSwagger = false;
+        }
+
+        $hasAnyDoc = ($hasSwagger || $hasScribe);
 
         $activeType = 'none';
+        $primaryUrl = null;
+        $primaryLabel = null;
+        $title = null;
+
         if ($hasSwagger && $hasScribe) {
             $activeType = 'both';
             $primaryUrl = url('docs');
-            $primaryLabel = 'API Docs (Swagger & Scribe)';
+            $primaryLabel = 'API Docs';
+            $title = 'API Documentation Manager (Swagger & Scribe)';
         } elseif ($hasScribe) {
             $activeType = 'scribe';
             $primaryUrl = url('docs');
             $primaryLabel = 'Scribe Docs';
+            $title = 'Knuckles Scribe API Documentation';
         } elseif ($hasSwagger) {
             $activeType = 'swagger';
             $primaryUrl = url('api/documentation');
             $primaryLabel = 'Swagger Docs';
-        } else {
-            $primaryUrl = '#';
-            $primaryLabel = 'API Documentation';
+            $title = 'Swagger / OpenAPI 3.0 Documentation';
         }
 
         return [
+            'has_api_docs'  => $hasAnyDoc,
+            'is_available'  => $hasAnyDoc,
             'active_type'   => $activeType,
             'has_swagger'   => $hasSwagger,
             'has_scribe'    => $hasScribe,
             'primary_url'   => $primaryUrl,
             'primary_label' => $primaryLabel,
-            'title'         => ($activeType === 'scribe') ? 'Knuckles Scribe API Documentation' : (($activeType === 'both') ? 'API Documentation Manager (Swagger & Scribe)' : 'Swagger / OpenAPI 3.0 Documentation'),
+            'title'         => $title,
             'swagger'       => [
                 'installed'  => $hasSwagger,
                 'name'       => 'L5-Swagger (OpenAPI 3.0)',
@@ -511,6 +565,14 @@ class DevZoneService
     public function generateApiDocumentation(?string $driver = null): array
     {
         $docInfo = $this->getApiDocInfo();
+
+        if (!$docInfo['has_api_docs']) {
+            return [
+                'success' => false,
+                'message' => 'No supported API documentation package (L5-Swagger or Knuckles Scribe) is installed in this project.',
+                'output'  => 'Please install Knuckles Scribe (knuckleswtf/scribe) or L5-Swagger (darkaonline/l5-swagger) to enable automated API documentation.',
+            ];
+        }
 
         if (empty($driver) || $driver === 'auto') {
             $driver = ($docInfo['has_scribe'] && !$docInfo['has_swagger']) ? 'scribe' : 'swagger';
@@ -887,15 +949,92 @@ class DevZoneService
             $configContent = preg_replace("/('passkey'\s*=>\s*env\('[^']+',\s*')[^']*('\))/", "\${1}{$passkey}\${2}", $configContent);
             $configContent = preg_replace("/('admin_email'\s*=>\s*env\('[^']+',\s*')[^']*('\))/", "\${1}{$email}\${2}", $configContent);
             $configContent = preg_replace("/('path'\s*=>\s*env\('[^']+',\s*')[^']*('\))/", "\${1}{$path}\${2}", $configContent);
+            $configContent = preg_replace("/('setup_completed'\s*=>\s*)[^,]+(,?)/", "\${1}true\${2}", $configContent);
             File::put($configPath, $configContent);
             $updated = true;
         }
+
+        // 3. Update runtime configuration immediately
+        config([
+            'devzone.passkey'         => $passkey,
+            'devzone.admin_email'     => $email,
+            'devzone.path'            => $path,
+            'devzone.setup_completed' => true,
+        ]);
 
         try {
             Artisan::call('config:clear');
         } catch (\Throwable $e) {}
 
         $this->logActivity('Setup Completed', "Master credentials configured for {$email}", 'success');
+
+        return $updated;
+    }
+
+    /**
+     * Update master access credentials after verifying current passkey.
+     * Persists new passkey (and optional email) to .env, host config, and runtime config.
+     */
+    public function updateCredentials(string $newPasskey, ?string $newEmail = null): bool
+    {
+        $updated = false;
+
+        // 1. Update .env if present
+        $envPath = base_path('.env');
+        if (File::exists($envPath)) {
+            $envContent = File::get($envPath);
+            $keys = [
+                'DEVZONE_KEY' => $newPasskey,
+            ];
+
+            if (preg_match('/^DEV_PANEL_KEY=/m', $envContent)) {
+                $keys['DEV_PANEL_KEY'] = $newPasskey;
+            }
+
+            if (!empty($newEmail)) {
+                $keys['DEVZONE_EMAIL'] = $newEmail;
+                if (preg_match('/^DEV_PANEL_EMAIL=/m', $envContent)) {
+                    $keys['DEV_PANEL_EMAIL'] = $newEmail;
+                }
+            }
+
+            foreach ($keys as $k => $v) {
+                $escapedVal = (str_contains($v, ' ') || str_contains($v, '#')) ? "\"{$v}\"" : $v;
+                if (preg_match("/^{$k}=.*/m", $envContent)) {
+                    $envContent = preg_replace("/^{$k}=.*/m", "{$k}={$escapedVal}", $envContent);
+                } else {
+                    $envContent .= "\n{$k}={$escapedVal}";
+                }
+            }
+
+            File::put($envPath, $envContent);
+            $updated = true;
+        }
+
+        // 2. Update config/devzone.php if published in host application
+        $configPath = config_path('devzone.php');
+        if (File::exists($configPath)) {
+            $configContent = File::get($configPath);
+            $configContent = preg_replace("/('passkey'\s*=>\s*env\('[^']+',\s*')[^']*('\))/", "\${1}{$newPasskey}\${2}", $configContent);
+            if (!empty($newEmail)) {
+                $configContent = preg_replace("/('admin_email'\s*=>\s*env\('[^']+',\s*')[^']*('\))/", "\${1}{$newEmail}\${2}", $configContent);
+            }
+            File::put($configPath, $configContent);
+            $updated = true;
+        }
+
+        // 3. Update runtime config immediately
+        config(['devzone.passkey' => $newPasskey]);
+        if (!empty($newEmail)) {
+            config(['devzone.admin_email' => $newEmail]);
+        }
+
+        // 4. Clear compiled configuration cache
+        try {
+            Artisan::call('config:clear');
+        } catch (\Throwable $e) {}
+
+        $this->logActivity('Credentials Updated', 'Master passkey updated successfully by authenticated developer', 'success');
 
         return $updated;
     }
@@ -969,5 +1108,201 @@ class DevZoneService
         }
 
         return false;
+    }
+
+    /**
+     * Resolve the URL for a DevZone local asset (offline & zero CDN).
+     */
+    public static function asset(string $path): string
+    {
+        $path = ltrim($path, '/\\');
+
+        if (function_exists('public_path') && file_exists(public_path('vendor/devzone/' . $path))) {
+            return asset('vendor/devzone/' . $path);
+        }
+
+        if (\Illuminate\Support\Facades\Route::has('devzone.asset')) {
+            return route('devzone.asset', ['path' => $path]);
+        }
+
+        $prefix = config('devzone.path', 'developer-panel');
+        return url($prefix . '/assets/' . $path);
+    }
+
+    /**
+     * Check GitHub for latest release / tags and version info.
+     */
+    public function checkPackageUpdate(): array
+    {
+        $currentVersion = self::VERSION;
+        $repoCandidates = [
+            'bsamit/nextsyntaxtech-devzone',
+            'nextsyntaxtech/devzone',
+        ];
+
+        $latestTag = null;
+        $releaseDate = null;
+        $releaseNotes = null;
+        $releaseUrl = 'https://github.com/bsamit/nextsyntaxtech-devzone/releases';
+
+        foreach ($repoCandidates as $repo) {
+            try {
+                $url = "https://api.github.com/repos/{$repo}/releases/latest";
+                $responseBody = null;
+
+                if (class_exists(\Illuminate\Support\Facades\Http::class)) {
+                    $res = \Illuminate\Support\Facades\Http::withHeaders([
+                        'User-Agent' => 'nextSyntaxTech-DevZone-Updater',
+                        'Accept'     => 'application/vnd.github.v3+json',
+                    ])->timeout(6)->get($url);
+
+                    if ($res->successful()) {
+                        $responseBody = $res->json();
+                    }
+                }
+
+                if (!$responseBody && function_exists('curl_init')) {
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, $url);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                        'User-Agent: nextSyntaxTech-DevZone-Updater',
+                        'Accept: application/vnd.github.v3+json',
+                    ]);
+                    curl_setopt($ch, CURLOPT_TIMEOUT, 6);
+                    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                    $result = curl_exec($ch);
+                    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+
+                    if ($status === 200 && $result) {
+                        $responseBody = json_decode($result, true);
+                    }
+                }
+
+                if (!empty($responseBody) && !empty($responseBody['tag_name'])) {
+                    $latestTag = ltrim((string) $responseBody['tag_name'], 'vV');
+                    $releaseDate = !empty($responseBody['published_at'])
+                        ? date('M d, Y', strtotime((string) $responseBody['published_at']))
+                        : date('M d, Y');
+                    $releaseNotes = $responseBody['body'] ?? 'No release notes provided.';
+                    $releaseUrl = $responseBody['html_url'] ?? $releaseUrl;
+                    break;
+                }
+
+                // Fallback: check tags
+                $tagsUrl = "https://api.github.com/repos/{$repo}/tags";
+                $tagsBody = null;
+
+                if (class_exists(\Illuminate\Support\Facades\Http::class)) {
+                    $res = \Illuminate\Support\Facades\Http::withHeaders([
+                        'User-Agent' => 'nextSyntaxTech-DevZone-Updater',
+                    ])->timeout(5)->get($tagsUrl);
+
+                    if ($res->successful()) {
+                        $tagsBody = $res->json();
+                    }
+                }
+
+                if (!empty($tagsBody) && is_array($tagsBody) && isset($tagsBody[0]['name'])) {
+                    $latestTag = ltrim((string) $tagsBody[0]['name'], 'vV');
+                    $releaseDate = date('M d, Y');
+                    $releaseNotes = "Release tag {$tagsBody[0]['name']} is available on GitHub.";
+                    $releaseUrl = "https://github.com/{$repo}/releases";
+                    break;
+                }
+            } catch (\Throwable $e) {
+                // Continue to next candidate
+            }
+        }
+
+        if (empty($latestTag)) {
+            $latestTag = $currentVersion;
+            $releaseDate = date('M d, Y');
+            $releaseNotes = 'Current build is up to date.';
+        }
+
+        $cleanCurrent = ltrim($currentVersion, 'vV');
+        $cleanLatest = ltrim($latestTag, 'vV');
+        $hasUpdate = version_compare($cleanLatest, $cleanCurrent, '>');
+
+        return [
+            'success'         => true,
+            'current_version' => 'v' . $cleanCurrent,
+            'latest_version'  => 'v' . $cleanLatest,
+            'has_update'      => $hasUpdate,
+            'release_date'    => $releaseDate,
+            'release_notes'   => $releaseNotes,
+            'release_url'     => $releaseUrl,
+            'developer'       => self::AUTHOR,
+            'email'           => self::AUTHOR_EMAIL,
+            'brand'           => 'nextSyntaxTech',
+            'package'         => 'nextSyntaxTech DevZone',
+            'composer_cmd'    => 'composer update nextsyntaxtech/devzone',
+        ];
+    }
+
+    /**
+     * Run package update routine.
+     */
+    public function updatePackage(): array
+    {
+        $startTime = microtime(true);
+        $outputLogs = [];
+        $outputLogs[] = ">> [nextSyntaxTech DevZone Updater Started]";
+        $outputLogs[] = ">> Checking environment and package repositories...";
+
+        // Try executing composer
+        if (function_exists('shell_exec') && !in_array('shell_exec', explode(',', (string) ini_get('disable_functions')))) {
+            $outputLogs[] = ">> Executing: composer update nextsyntaxtech/devzone --no-interaction";
+            try {
+                $base = base_path();
+                $cmd = (PHP_OS_FAMILY === 'Windows')
+                    ? "cd /d \"{$base}\" && composer update nextsyntaxtech/devzone --no-interaction 2>&1"
+                    : "cd \"{$base}\" && composer update nextsyntaxtech/devzone --no-interaction 2>&1";
+
+                $output = (string) @shell_exec($cmd);
+                if (!empty($output)) {
+                    $outputLogs[] = trim($output);
+                }
+            } catch (\Throwable $e) {
+                $outputLogs[] = ">> Notice: Shell execution error: " . $e->getMessage();
+            }
+        } else {
+            $outputLogs[] = ">> Notice: shell_exec is restricted by PHP configuration.";
+            $outputLogs[] = ">> Please run: composer update nextsyntaxtech/devzone in terminal.";
+        }
+
+        // Run application optimization & cache clear
+        $outputLogs[] = ">> Clearing compiled framework caches...";
+        try {
+            Artisan::call('optimize:clear');
+            $artisanOut = trim(Artisan::output());
+            if (!empty($artisanOut)) {
+                $outputLogs[] = $artisanOut;
+            }
+        } catch (\Throwable $e) {}
+
+        // Re-publish DevZone assets
+        try {
+            Artisan::call('vendor:publish', [
+                '--tag' => 'devzone-assets',
+                '--force' => true,
+            ]);
+            $outputLogs[] = ">> Local package assets refreshed successfully.";
+        } catch (\Throwable $e) {}
+
+        $duration = round((microtime(true) - $startTime) * 1000, 1);
+        $outputLogs[] = ">> [Update routine completed in {$duration}ms]";
+
+        $this->logActivity('Package Update', "Package update routine executed ({$duration}ms)", 'success');
+
+        return [
+            'success'  => true,
+            'message'  => 'Package update routine completed! Application caches and assets refreshed.',
+            'output'   => implode("\n", $outputLogs),
+            'duration' => $duration,
+            'version'  => 'v' . self::VERSION,
+        ];
     }
 }

@@ -2,6 +2,9 @@
 
 @section('content')
 
+<!-- Flash Messages via Blade Component -->
+<x-devzone::alert session />
+
 <!-- Quick Stats Row (4 Focused Header KPI Cards) -->
 <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3 mb-4">
     <!-- Card 1: PHP & Laravel Framework Engine -->
@@ -110,9 +113,11 @@
     <div class="dev-nav-tab" data-tab="artisan" onclick="switchTab('artisan')">
         <i class="bx bx-command"></i> Safe Artisan
     </div>
-    <div class="dev-nav-tab" data-tab="swagger" onclick="switchTab('swagger')">
-        <i class="bx bx-book-open"></i> {{ !empty($apiDocInfo) ? $apiDocInfo['primary_label'] : 'API Docs' }}
-    </div>
+    @if(!empty($apiDocInfo['has_api_docs']))
+        <div class="dev-nav-tab" data-tab="docs" onclick="switchTab('docs')">
+            <i class="bx bx-book-open"></i> {{ $apiDocInfo['primary_label'] }}
+        </div>
+    @endif
     <div class="dev-nav-tab" data-tab="debug" onclick="switchTab('debug')">
         <i class="bx bx-bug"></i> Debugging
     </div>
@@ -202,30 +207,53 @@
                             </div>
                         </div>
 
-                        <!-- Quick 4: Dynamic API Docs Generator (Scribe / Swagger) -->
-                        <div class="col-md-6">
-                            <div class="command-subcard p-3 d-flex flex-column justify-content-between h-100">
-                                <div>
-                                    @php
-                                        $isScribeActive = (!empty($apiDocInfo) && $apiDocInfo['active_type'] === 'scribe');
-                                        $docCmdName = $isScribeActive ? 'scribe:generate' : 'l5-swagger:generate';
-                                        $docToolName = $isScribeActive ? 'Scribe' : 'Swagger';
-                                    @endphp
-                                    <div class="d-flex align-items-center gap-2 mb-2">
-                                        <i class="bx bx-book-open text-primary fs-4"></i>
-                                        <h6 class="fw-bold mb-0 text-main">Generate {{ $docToolName }} Docs</h6>
+                        @if(!empty($apiDocInfo['has_api_docs']))
+                            <!-- Quick 4: Dynamic API Docs Generator (Scribe / Swagger) -->
+                            <div class="col-md-6">
+                                <div class="command-subcard p-3 d-flex flex-column justify-content-between h-100">
+                                    <div>
+                                        @php
+                                            $isScribeActive = ($apiDocInfo['active_type'] === 'scribe');
+                                            $isBothActive = ($apiDocInfo['active_type'] === 'both');
+                                            $docCmdName = $isScribeActive ? 'scribe:generate' : 'l5-swagger:generate';
+                                            $docToolName = $isScribeActive ? 'Scribe' : ($isBothActive ? 'API' : 'Swagger');
+                                        @endphp
+                                        <div class="d-flex align-items-center gap-2 mb-2">
+                                            <i class="bx bx-book-open text-primary fs-4"></i>
+                                            <h6 class="fw-bold mb-0 text-main">Generate {{ $docToolName }} Docs</h6>
+                                        </div>
+                                        <div class="command-code-box mb-2">
+                                            <span class="command-prefix">$</span>
+                                            <code class="command-code-text">php artisan {{ $docCmdName }}</code>
+                                        </div>
+                                        <p class="small text-muted mb-3">Re-scans API annotations and compiles fresh interactive API documentation.</p>
                                     </div>
-                                    <div class="command-code-box mb-2">
-                                        <span class="command-prefix">$</span>
-                                        <code class="command-code-text">php artisan {{ $docCmdName }}</code>
-                                    </div>
-                                    <p class="small text-muted mb-3">Re-scans API annotations and compiles fresh interactive API documentation.</p>
+                                    <button class="btn btn-action-primary w-100 justify-content-center" onclick="generateDocAction('{{ $isScribeActive ? 'scribe' : 'swagger' }}')">
+                                        <i class="bx bx-refresh"></i> Generate {{ $docToolName }} Docs
+                                    </button>
                                 </div>
-                                <button class="btn btn-action-primary w-100 justify-content-center" onclick="generateDocAction('{{ $isScribeActive ? 'scribe' : 'swagger' }}')">
-                                    <i class="bx bx-refresh"></i> Generate {{ $docToolName }} Docs
-                                </button>
                             </div>
-                        </div>
+                        @else
+                            <!-- Quick 4: Clear Config Cache (Active when No API Docs installed) -->
+                            <div class="col-md-6">
+                                <div class="command-subcard p-3 d-flex flex-column justify-content-between h-100">
+                                    <div>
+                                        <div class="d-flex align-items-center gap-2 mb-2">
+                                            <i class="bx bx-cog text-primary fs-4"></i>
+                                            <h6 class="fw-bold mb-0 text-main">Clear Config Cache</h6>
+                                        </div>
+                                        <div class="command-code-box mb-2">
+                                            <span class="command-prefix">$</span>
+                                            <code class="command-code-text">php artisan config:clear</code>
+                                        </div>
+                                        <p class="small text-muted mb-3">Removes cached configuration file to reflect any immediate environment changes.</p>
+                                    </div>
+                                    <button class="btn btn-action-primary w-100 justify-content-center" onclick="executeArtisanCommand('config:clear')">
+                                        <i class="bx bx-play"></i> Run config:clear
+                                    </button>
+                                </div>
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -311,10 +339,13 @@
     <div class="dev-card">
         <div class="dev-card-header">
             <div>
-                <h6 class="fw-bold mb-0 text-main d-flex align-items-center gap-2">
+                <h6 class="fw-bold mb-0 text-main d-flex align-items-center gap-2 flex-wrap">
                     <i class="bx bx-layer text-success"></i> Laravel Migration Files Directory
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold" style="font-size: 11px;">
+                        <i class="bx bx-sort-up"></i> Laravel Execution Sequence (1 &rarr; {{ count($migrations) }})
+                    </span>
                 </h6>
-                <small class="text-muted">Core and Module database migrations (Execution status synced with <code>migrations</code> table)</small>
+                <small class="text-muted">Sequenced in exact Laravel chronological order so prerequisite tables execute first</small>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <button class="btn btn-action-primary" style="background: linear-gradient(135deg, #059669 0%, #047857 100%);" onclick="runAllMigrationsAction()" {{ $systemInfo['migrations_pending'] == 0 ? 'disabled' : '' }}>
@@ -342,17 +373,23 @@
             <table class="dev-table" id="migrationsTable">
                 <thead>
                     <tr>
-                        <th style="width: 140px;">Status</th>
+                        <th style="width: 55px;" class="text-center">#</th>
+                        <th style="width: 130px;">Status</th>
                         <th>Migration File</th>
-                        <th style="width: 140px;">Module</th>
+                        <th style="width: 130px;">Module</th>
                         <th>Relative Path</th>
-                        <th style="width: 100px;">Batch</th>
-                        <th style="width: 130px;" class="text-end text-nowrap">Action</th>
+                        <th style="width: 90px;">Batch</th>
+                        <th style="width: 120px;" class="text-end text-nowrap">Action</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($migrations as $m)
                         <tr class="migration-row" data-status="{{ $m['is_executed'] ? 'ran' : 'pending' }}">
+                            <td class="text-center">
+                                <span class="badge rounded-pill font-monospace" style="background: var(--bg-card-sub); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 11px;">
+                                    {{ $m['sequence'] ?? $loop->iteration }}
+                                </span>
+                            </td>
                             <td>
                                 @if($m['is_executed'])
                                     <span class="badge-status-ran">
@@ -393,7 +430,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">No migration files found.</td>
+                            <td colspan="7" class="text-center text-muted py-4">No migration files found.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -474,21 +511,51 @@
 <!-- ============================================================== -->
 <div class="tab-content-pane" id="tab-artisan" style="display: none;">
     <div class="dev-card">
-        <div class="dev-card-header">
+        <div class="dev-card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
             <div>
-                <h6 class="fw-bold mb-0 text-main d-flex align-items-center gap-2">
+                <h6 class="fw-bold mb-0 text-main d-flex align-items-center gap-2 flex-wrap">
                     <i class="bx bx-command text-primary"></i> Safe Artisan Execution Center
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle fw-semibold" style="font-size: 11px;">
+                        {{ count($artisanCommands) }} Whitelisted Commands
+                    </span>
                 </h6>
                 <small class="text-muted">Strict whitelist of safe application optimization, caching, and maintenance operations</small>
             </div>
         </div>
+
+        <!-- Filter and Search Bar -->
+        <div class="p-3 border-bottom border-secondary border-opacity-10 d-flex flex-wrap align-items-center justify-content-between gap-3" style="background: var(--bg-card-sub);">
+            <div class="d-flex align-items-center gap-2 flex-grow-1" style="max-width: 440px;">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text dev-input-group-text"><i class="bx bx-search"></i></span>
+                    <input type="text" class="form-control dev-form-control" id="artisanSearchInput" placeholder="Search commands by name, flag, or description..." oninput="filterArtisanCommands()">
+                    <button class="btn btn-outline-secondary btn-sm" type="button" onclick="document.getElementById('artisanSearchInput').value=''; filterArtisanCommands();" title="Clear Search">
+                        <i class="bx bx-x"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2 flex-wrap" id="artisanCategoryFilterGroup">
+                <button class="btn btn-sm btn-action-secondary active" onclick="setArtisanCategoryFilter('all', this)">
+                    All ({{ count($artisanCommands) }})
+                </button>
+                @php
+                    $categories = collect($artisanCommands)->pluck('category')->unique()->values();
+                @endphp
+                @foreach($categories as $category)
+                    <button class="btn btn-sm btn-action-secondary" onclick="setArtisanCategoryFilter('{{ strtolower($category) }}', this)">
+                        {{ $category }}
+                    </button>
+                @endforeach
+            </div>
+        </div>
+
         <div class="dev-card-body">
-            <div class="row g-3">
+            <div class="row g-3" id="artisanCardsContainer">
                 @foreach($artisanCommands as $cmdKey => $cmd)
                     @php
                         $catSlug = strtolower(preg_replace('/[^a-z0-9]/', '', $cmd['category']));
                     @endphp
-                    <div class="col-xl-4 col-md-6">
+                    <div class="col-xl-4 col-md-6 artisan-command-item" data-category="{{ strtolower($cmd['category']) }}" data-cmd="{{ strtolower($cmdKey) }}">
                         <div class="command-subcard p-3 d-flex flex-column justify-content-between h-100">
                             <div>
                                 <div class="d-flex align-items-center justify-content-between mb-2">
@@ -514,15 +581,25 @@
                         </div>
                     </div>
                 @endforeach
+
+                <!-- Empty State Message when no commands match search -->
+                <div class="col-12 d-none" id="artisanNoResults">
+                    <div class="text-center py-5 text-muted">
+                        <i class="bx bx-search-alt fs-1 text-secondary opacity-50 mb-2"></i>
+                        <h6 class="fw-semibold text-main">No matching Artisan commands found</h6>
+                        <p class="small text-muted mb-0">Try searching for keywords like "optimize", "cache", "route", "view", or "clear".</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+@if(!empty($apiDocInfo['has_api_docs']))
 <!-- ============================================================== -->
-<!-- TAB 5: DYNAMIC API DOCUMENTATION (SWAGGER / SCRIBE) -->
+<!-- TAB 5: DYNAMIC API DOCUMENTATION ({{ strtoupper($apiDocInfo['active_type'] ?? 'DOCS') }}) -->
 <!-- ============================================================== -->
-<div class="tab-content-pane" id="tab-swagger" style="display: none;">
+<div class="tab-content-pane" id="tab-docs" style="display: none;">
     <div class="dev-card">
         <div class="dev-card-header">
             <div>
@@ -531,7 +608,7 @@
                 </h6>
                 <small class="text-muted">Generate, compile, and preview interactive REST API documentation</small>
             </div>
-            @if(!empty($apiDocInfo) && $apiDocInfo['primary_url'] !== '#')
+            @if(!empty($apiDocInfo['primary_url']))
                 <a href="{{ $apiDocInfo['primary_url'] }}" target="_blank" class="btn btn-action-primary">
                     <i class="bx bx-link-external"></i> View Documentation Portal
                 </a>
@@ -539,12 +616,7 @@
         </div>
 
         <div class="dev-card-body">
-            @php
-                $hasSwagger = $apiDocInfo['has_swagger'] ?? true;
-                $hasScribe = $apiDocInfo['has_scribe'] ?? false;
-            @endphp
-
-            @if($hasSwagger && $hasScribe)
+            @if(!empty($apiDocInfo['has_swagger']) && !empty($apiDocInfo['has_scribe']))
                 <!-- Both Swagger and Scribe Are Installed -->
                 <div class="row g-4">
                     <!-- Scribe Column -->
@@ -606,7 +678,7 @@
                     </div>
                 </div>
 
-            @elseif($hasScribe)
+            @elseif(!empty($apiDocInfo['has_scribe']))
                 <!-- Only Scribe Installed -->
                 <div class="row g-4 align-items-center">
                     <div class="col-lg-8">
@@ -637,7 +709,7 @@
                     </div>
                 </div>
 
-            @elseif($hasSwagger)
+            @elseif(!empty($apiDocInfo['has_swagger']))
                 <!-- Only Swagger Installed -->
                 <div class="row g-4 align-items-center">
                     <div class="col-lg-8">
@@ -669,22 +741,11 @@
                         </div>
                     </div>
                 </div>
-
-            @else
-                <!-- Neither Installed -->
-                <div class="p-4 text-center">
-                    <i class="bx bx-info-circle text-warning fs-1 mb-2"></i>
-                    <h5 class="fw-bold text-main mb-2">No API Documentation Package Detected</h5>
-                    <p class="text-muted small mb-3">Install either Knuckles Scribe or L5-Swagger to generate automated API documentation.</p>
-                    <div class="d-inline-flex gap-3">
-                        <code class="p-2 border rounded">composer require knuckleswtf/scribe</code>
-                        <code class="p-2 border rounded">composer require darkaonline/l5-swagger</code>
-                    </div>
-                </div>
             @endif
         </div>
     </div>
 </div>
+@endif
 
 <!-- ============================================================== -->
 <!-- TAB 6: DEBUGGING SETTINGS -->
@@ -910,6 +971,47 @@
     }
 
     // -------------------------------------------------------------
+    // Safe Artisan Search & Category Filtering
+    // -------------------------------------------------------------
+    let currentArtisanCategory = 'all';
+
+    function setArtisanCategoryFilter(category, btn) {
+        currentArtisanCategory = category.toLowerCase();
+        const group = document.getElementById('artisanCategoryFilterGroup');
+        if (group) {
+            group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+        }
+        filterArtisanCommands();
+    }
+
+    function filterArtisanCommands() {
+        const searchInput = document.getElementById('artisanSearchInput');
+        const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+        const items = document.querySelectorAll('.artisan-command-item');
+        let visibleCount = 0;
+
+        items.forEach(item => {
+            const category = (item.getAttribute('data-category') || '').toLowerCase();
+            const text = item.textContent.toLowerCase();
+            const matchesCategory = (currentArtisanCategory === 'all') || (category === currentArtisanCategory);
+            const matchesSearch = !query || text.includes(query);
+
+            if (matchesCategory && matchesSearch) {
+                item.classList.remove('d-none');
+                visibleCount++;
+            } else {
+                item.classList.add('d-none');
+            }
+        });
+
+        const noResults = document.getElementById('artisanNoResults');
+        if (noResults) {
+            noResults.classList.toggle('d-none', visibleCount > 0);
+        }
+    }
+
+    // -------------------------------------------------------------
     // AJAX Action Helpers & Request Wrapper
     // -------------------------------------------------------------
     function getCsrfToken() {
@@ -962,50 +1064,51 @@
     }
 
     function handleDevzoneError(err, fallbackMessage = 'Operation failed') {
-        Swal.close();
         if (err.message === 'CSRF_EXPIRED') {
-            Swal.fire({
+            DevZoneAlert.result({
                 title: 'Session Expired',
-                text: 'Your security token (CSRF) has expired. Please refresh the page to continue.',
+                message: 'Your security token (CSRF) has expired. Please refresh the page to continue.',
                 icon: 'warning',
-                confirmButtonText: 'Refresh Page',
-                confirmButtonColor: '#2563eb'
-            }).then(() => window.location.reload());
+                onOk: () => window.location.reload()
+            });
             return;
         }
         if (err.message === 'SESSION_EXPIRED') {
-            Swal.fire({
+            DevZoneAlert.result({
                 title: 'Session Expired',
-                text: 'Developer session has expired. Please re-authenticate.',
+                message: 'Developer session has expired. Please re-authenticate.',
                 icon: 'warning',
-                confirmButtonText: 'Log In',
-                confirmButtonColor: '#2563eb'
-            }).then(() => window.location.reload());
+                onOk: () => window.location.reload()
+            });
             return;
         }
-        Swal.fire('Error', err.message || fallbackMessage, 'error');
+        DevZoneAlert.error('Operation Failed', err.message || fallbackMessage);
     }
 
     function executeArtisanCommand(command) {
-        Swal.fire({
+        DevZoneAlert.confirm({
             title: 'Execute Command?',
             html: `Run <code>php artisan ${command}</code>?`,
             icon: 'question',
-            showCancelButton: true,
             confirmButtonText: 'Run Command',
             confirmButtonColor: '#2563eb',
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
-                Swal.fire({ title: 'Executing...', text: `Running php artisan ${command}`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                DevZoneAlert.loading('Executing Command...', `Running <code>php artisan ${command}</code>`);
 
                 devzoneFetch('{{ route("devzone.artisan.run") }}', {
                     method: 'POST',
                     body: { command: command }
                 })
                 .then(res => {
-                    Swal.close();
-                    showTerminalModal(`php artisan ${command}`, res.output, res.message);
+                    DevZoneAlert.terminal({
+                        title: `php artisan ${command}`,
+                        message: res.message || 'Execution finished.',
+                        output: res.output,
+                        meta: res.success ? 'Exit Code: 0 (Success)' : 'Execution Failed',
+                        isSuccess: res.success,
+                    });
                 })
                 .catch(err => handleDevzoneError(err, 'Command execution failed'));
             }
@@ -1013,28 +1116,32 @@
     }
 
     function runSingleMigrationAction(path, filename) {
-        Swal.fire({
+        DevZoneAlert.confirm({
             title: 'Run Migration?',
             html: `Execute migration:<br><code>${filename}</code>?`,
             icon: 'warning',
-            showCancelButton: true,
             confirmButtonText: 'Execute Migration',
             confirmButtonColor: '#2563eb',
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
-                Swal.fire({ title: 'Migrating...', text: `Applying ${filename}`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                DevZoneAlert.loading('Applying Migration...', `Executing <code>${filename}</code>...`);
 
                 devzoneFetch('{{ route("devzone.migration.run") }}', {
                     method: 'POST',
                     body: { mode: 'single', path: path }
                 })
                 .then(res => {
-                    Swal.close();
-                    showTerminalModal(`Migrate: ${filename}`, res.output, res.message);
-                    if (res.success) {
-                        setTimeout(() => window.location.reload(), 2500);
-                    }
+                    DevZoneAlert.terminal({
+                        title: `Migrate: ${filename}`,
+                        message: res.message,
+                        output: res.output,
+                        meta: res.success ? 'Status: Migrated (Exit Code 0)' : 'Status: Failed',
+                        isSuccess: res.success,
+                        onOk: () => {
+                            if (res.success) window.location.reload();
+                        }
+                    });
                 })
                 .catch(err => handleDevzoneError(err, 'Migration failed'));
             }
@@ -1042,28 +1149,32 @@
     }
 
     function runAllMigrationsAction() {
-        Swal.fire({
+        DevZoneAlert.confirm({
             title: 'Run All Pending Migrations?',
             text: 'This will execute all outstanding database schema migrations safely.',
             icon: 'warning',
-            showCancelButton: true,
             confirmButtonText: 'Run All Pending',
             confirmButtonColor: '#059669',
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
-                Swal.fire({ title: 'Migrating...', text: 'Executing pending migrations...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                DevZoneAlert.loading('Applying Migrations...', 'Executing all pending migrations safely...');
 
                 devzoneFetch('{{ route("devzone.migration.run") }}', {
                     method: 'POST',
                     body: { mode: 'all' }
                 })
                 .then(res => {
-                    Swal.close();
-                    showTerminalModal('All Pending Migrations', res.output, res.message);
-                    if (res.success) {
-                        setTimeout(() => window.location.reload(), 2500);
-                    }
+                    DevZoneAlert.terminal({
+                        title: 'All Pending Migrations',
+                        message: res.message,
+                        output: res.output,
+                        meta: res.success ? 'Status: Migrated (Exit Code 0)' : 'Status: Failed',
+                        isSuccess: res.success,
+                        onOk: () => {
+                            if (res.success) window.location.reload();
+                        }
+                    });
                 })
                 .catch(err => handleDevzoneError(err, 'Pending migrations execution failed'));
             }
@@ -1071,25 +1182,29 @@
     }
 
     function runSeederAction(seederClass) {
-        Swal.fire({
+        DevZoneAlert.confirm({
             title: 'Execute Seeder?',
             html: `Run seeder class <code>${seederClass}</code>?`,
             icon: 'question',
-            showCancelButton: true,
             confirmButtonText: 'Execute Seeder',
             confirmButtonColor: '#2563eb',
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
-                Swal.fire({ title: 'Seeding...', text: `Executing ${seederClass}`, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                DevZoneAlert.loading('Executing Seeder...', `Seeding <code>${seederClass}</code>...`);
 
                 devzoneFetch('{{ route("devzone.seeder.run") }}', {
                     method: 'POST',
                     body: { class: seederClass }
                 })
                 .then(res => {
-                    Swal.close();
-                    showTerminalModal(`Seeder: ${seederClass}`, res.output, res.message);
+                    DevZoneAlert.terminal({
+                        title: `Seeder: ${seederClass}`,
+                        message: res.message,
+                        output: res.output,
+                        meta: res.success ? 'Status: Seeded (Exit Code 0)' : 'Status: Failed',
+                        isSuccess: res.success,
+                    });
                 })
                 .catch(err => handleDevzoneError(err, 'Seeder execution failed'));
             }
@@ -1098,37 +1213,36 @@
 
     function generateDocAction(driver = 'auto') {
         const docLabel = (driver === 'scribe') ? 'Scribe' : 'Swagger';
-        Swal.fire({ 
-            title: `Generating ${docLabel}...`, 
-            text: 'Scanning API controllers and compiling API specifications...', 
-            allowOutsideClick: false, 
-            didOpen: () => Swal.showLoading() 
-        });
+        DevZoneAlert.loading(`Generating ${docLabel}...`, 'Scanning API controllers and compiling API specifications...');
 
         devzoneFetch('{{ route("devzone.docs.generate") }}', {
             method: 'POST',
             body: { driver: driver }
         })
         .then(res => {
-            Swal.close();
-            showTerminalModal(`${docLabel} Generation Output`, res.output, res.message);
+            DevZoneAlert.terminal({
+                title: `${docLabel} Generation Output`,
+                message: res.message,
+                output: res.output,
+                meta: res.success ? 'Status: Generated (Exit Code 0)' : 'Status: Failed',
+                isSuccess: res.success,
+            });
         })
         .catch(err => handleDevzoneError(err, `${docLabel} generation failed`));
     }
 
     function toggleDebugAction(enable) {
         const actionText = enable ? 'Enable' : 'Disable';
-        Swal.fire({
+        DevZoneAlert.confirm({
             title: `${actionText} APP_DEBUG?`,
             text: enable ? 'Enabling debug displays error details and stack traces.' : 'Disabling debug hides verbose error details for security.',
             icon: enable ? 'warning' : 'info',
-            showCancelButton: true,
             confirmButtonText: `Yes, ${actionText}`,
             confirmButtonColor: enable ? '#f59e0b' : '#3b82f6',
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
-                Swal.fire({ title: 'Updating...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                DevZoneAlert.loading('Updating Environment...', `Setting APP_DEBUG to ${enable ? 'true' : 'false'}...`);
 
                 devzoneFetch('{{ route("devzone.debug.toggle") }}', {
                     method: 'POST',
@@ -1136,9 +1250,14 @@
                 })
                 .then(res => {
                     if (res.success) {
-                        Swal.fire('Success', res.message, 'success').then(() => window.location.reload());
+                        DevZoneAlert.result({
+                            title: 'Environment Updated',
+                            message: res.message,
+                            icon: 'success',
+                            onOk: () => window.location.reload()
+                        });
                     } else {
-                        Swal.fire('Failed', res.message || 'Unable to update APP_DEBUG', 'error');
+                        DevZoneAlert.error('Update Failed', res.message || 'Unable to update APP_DEBUG');
                     }
                 })
                 .catch(err => handleDevzoneError(err, 'Failed to toggle APP_DEBUG'));
@@ -1147,29 +1266,33 @@
     }
 
     function createDatabaseBackupAction() {
-        Swal.fire({
+        DevZoneAlert.confirm({
             title: 'Create Database Backup?',
             text: 'This will export a full SQL dump of the database into storage/app/backup.',
             icon: 'question',
-            showCancelButton: true,
             confirmButtonText: 'Start Backup',
             confirmButtonColor: '#059669',
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
-                Swal.fire({ title: 'Creating Backup...', text: 'Dumping database tables... Please wait...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                DevZoneAlert.loading('Creating Database Backup...', 'Dumping database tables into SQL archive... Please wait...');
 
                 devzoneFetch('{{ route("devzone.backup.create") }}', {
                     method: 'POST'
                 })
                 .then(res => {
                     if (res.success) {
-                        Swal.fire('Backup Created!', `${res.message} (${res.formatted_size})`, 'success').then(() => {
-                            switchTab('backup');
-                            window.location.reload();
+                        DevZoneAlert.result({
+                            title: 'Backup Created Successfully!',
+                            message: `${res.message} (${res.formatted_size})`,
+                            icon: 'success',
+                            onOk: () => {
+                                switchTab('backup');
+                                window.location.reload();
+                            }
                         });
                     } else {
-                        Swal.fire('Backup Failed', res.message, 'error');
+                        DevZoneAlert.error('Backup Failed', res.message);
                     }
                 })
                 .catch(err => handleDevzoneError(err, 'Database backup creation failed'));
@@ -1178,21 +1301,27 @@
     }
 
     function deleteBackupAction(filename) {
-        Swal.fire({
+        DevZoneAlert.confirm({
             title: 'Delete Backup?',
             html: `Permanently delete <code>${filename}</code>?`,
             icon: 'warning',
-            showCancelButton: true,
             confirmButtonText: 'Yes, Delete',
             confirmButtonColor: '#ef4444',
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
+                DevZoneAlert.loading('Deleting Backup...', `Removing <code>${filename}</code> from storage...`);
+
                 devzoneFetch(`{{ url(config('devzone.path', 'developer-panel') . '/backup/delete') }}/${encodeURIComponent(filename)}`, {
                     method: 'DELETE'
                 })
                 .then(res => {
-                    Swal.fire('Deleted', res.message, 'success').then(() => window.location.reload());
+                    DevZoneAlert.result({
+                        title: 'Backup Deleted',
+                        message: res.message,
+                        icon: 'success',
+                        onOk: () => window.location.reload()
+                    });
                 })
                 .catch(err => handleDevzoneError(err, 'Failed to delete backup file'));
             }
@@ -1200,21 +1329,27 @@
     }
 
     function clearLogsAction() {
-        Swal.fire({
+        DevZoneAlert.confirm({
             title: 'Clear Activity Logs?',
             text: 'This will permanently wipe the developer audit trail history.',
             icon: 'warning',
-            showCancelButton: true,
             confirmButtonText: 'Yes, Clear All',
             confirmButtonColor: '#ef4444',
             cancelButtonColor: '#64748b',
         }).then(result => {
             if (result.isConfirmed) {
+                DevZoneAlert.loading('Clearing Activity Logs...', 'Wiping developer audit trail history...');
+
                 devzoneFetch('{{ route("devzone.logs.clear") }}', {
                     method: 'POST'
                 })
                 .then(res => {
-                    Swal.fire('Cleared', res.message, 'success').then(() => window.location.reload());
+                    DevZoneAlert.result({
+                        title: 'Activity Logs Cleared',
+                        message: res.message,
+                        icon: 'success',
+                        onOk: () => window.location.reload()
+                    });
                 })
                 .catch(err => handleDevzoneError(err, 'Failed to clear activity logs'));
             }

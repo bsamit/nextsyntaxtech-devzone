@@ -18,12 +18,12 @@ class DevZoneAuthMiddleware
             abort(404);
         }
 
-        // 2. Check if first-time token setup is required
-        $isSetupDone = config('devzone.setup_completed', true);
+        // 2. Check if first-time credentials setup is required
+        $isSetupDone = (bool) config('devzone.setup_completed', false);
         $configuredKey = config('devzone.passkey');
 
-        if (!$isSetupDone && empty($configuredKey)) {
-            if ($request->routeIs('devzone.setup') || $request->routeIs('devzone.setup.submit')) {
+        if (!$isSetupDone || empty($configuredKey)) {
+            if ($request->routeIs('devzone.setup') || $request->routeIs('devzone.setup.submit') || $request->routeIs('devzone.asset')) {
                 return $next($request);
             }
             return redirect()->route('devzone.setup');

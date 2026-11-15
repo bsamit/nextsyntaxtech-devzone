@@ -4,9 +4,11 @@ namespace NextSyntaxTech\DevZone;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Routing\Router;
+use Illuminate\Support\Facades\Blade;
 use NextSyntaxTech\DevZone\Services\DevZoneService;
 use NextSyntaxTech\DevZone\Http\Middleware\DevZoneAuthMiddleware;
 use NextSyntaxTech\DevZone\Commands\InstallDevZoneCommand;
+use NextSyntaxTech\DevZone\View\Components\Alert;
 
 class DevZoneServiceProvider extends ServiceProvider
 {
@@ -35,12 +37,17 @@ class DevZoneServiceProvider extends ServiceProvider
         // 2. Register Views under namespace 'devzone'
         $this->loadViewsFrom(__DIR__ . '/../resources/views', 'devzone');
 
-        // 3. Register Route Middleware
+        // 3. Register Blade Components (<x-devzone::alert>, <x-devzone-alert>, <x-devzone::dialog>)
+        Blade::component('devzone-alert', Alert::class);
+        Blade::component('devzone::components.dialog', 'devzone-dialog');
+        Blade::anonymousComponentPath(__DIR__ . '/../resources/views/components', 'devzone');
+
+        // 4. Register Route Middleware
         /** @var Router $router */
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware('devzone.auth', DevZoneAuthMiddleware::class);
 
-        // 4. Console Publishing and Commands
+        // 5. Console Publishing and Commands
         if ($this->app->runningInConsole()) {
             // Publish Configuration
             $this->publishes([
@@ -51,6 +58,11 @@ class DevZoneServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/../resources/views' => resource_path('views/vendor/devzone'),
             ], 'devzone-views');
+
+            // Publish Local Assets (Offline & Zero-CDN: Bootstrap & Boxicons)
+            $this->publishes([
+                __DIR__ . '/../resources/assets' => public_path('vendor/devzone'),
+            ], 'devzone-assets');
 
             // Register Commands
             $this->commands([

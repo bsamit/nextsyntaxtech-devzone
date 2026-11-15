@@ -2,10 +2,18 @@
 
 use Illuminate\Support\Facades\Route;
 use NextSyntaxTech\DevZone\Http\Controllers\DevZoneController;
+use NextSyntaxTech\DevZone\Http\Controllers\DevZoneAssetController;
 
 $prefix = config('devzone.path', 'developer-panel');
 
 Route::prefix($prefix)->group(function () {
+    // -------------------------------------------------------------
+    // Local Package Assets (Offline, Zero-CDN Delivery)
+    // -------------------------------------------------------------
+    Route::get('/assets/{path}', [DevZoneAssetController::class, 'serve'])
+        ->where('path', '.*')
+        ->name('devzone.asset');
+
     // -------------------------------------------------------------
     // Public Authentication & Setup Wall
     // -------------------------------------------------------------
@@ -49,5 +57,12 @@ Route::prefix($prefix)->group(function () {
 
         // Activity Logs
         Route::post('/logs/clear', [DevZoneController::class, 'clearLogs'])->name('logs.clear');
+
+        // Master Credentials / Passkey Management
+        Route::post('/credentials/update', [DevZoneController::class, 'updateCredentials'])->name('credentials.update');
+
+        // Package Version & Auto-Update
+        Route::get('/version/check', [DevZoneController::class, 'checkVersion'])->name('version.check');
+        Route::post('/version/update', [DevZoneController::class, 'updateVersion'])->name('version.update');
     });
 });

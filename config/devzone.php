@@ -23,24 +23,37 @@ return [
     | Master Developer Access Key / Token
     |--------------------------------------------------------------------------
     | The secure token or passkey required to access the developer panel.
-    | If null and setup_completed is false, visitors are prompted to setup their token.
+    | When null or empty on a fresh install, visitors are automatically routed to
+    | the setup wizard to configure their own custom credentials.
     */
-    'passkey' => env('DEVZONE_KEY', env('DEV_PANEL_KEY', 'amitsaha.cse@gmail.com')),
+    'passkey' => env('DEVZONE_KEY', env('DEV_PANEL_KEY', null)),
 
     /*
     |--------------------------------------------------------------------------
     | Authorized Administrator Email
     |--------------------------------------------------------------------------
+    | The primary administrator contact email for audit logging and alerts.
     */
-    'admin_email' => env('DEVZONE_EMAIL', env('DEV_PANEL_EMAIL', 'amitsaha.cse@gmail.com')),
+    'admin_email' => env('DEVZONE_EMAIL', env('DEV_PANEL_EMAIL', null)),
 
     /*
     |--------------------------------------------------------------------------
     | Initial Setup Status
     |--------------------------------------------------------------------------
-    | When false and passkey is not set, DevZone prompts for first-time passkey setup.
+    | When false or not configured in .env, DevZone launches the first-time setup wizard.
     */
-    'setup_completed' => env('DEVZONE_SETUP_COMPLETED', true),
+    'setup_completed' => (bool) env('DEVZONE_SETUP_COMPLETED', false),
+
+    /*
+    |--------------------------------------------------------------------------
+    | API Documentation Settings
+    |--------------------------------------------------------------------------
+    | 'auto' (default): Auto-detects installed documentation packages (L5-Swagger or Knuckles Scribe).
+    | false / 'none': Completely disables all API documentation tabs and buttons across DevZone.
+    | 'swagger': Enforces Swagger / OpenAPI 3.0 only.
+    | 'scribe': Enforces Knuckles Scribe only.
+    */
+    'api_docs' => env('DEVZONE_API_DOCS', 'auto'),
 
     /*
     |--------------------------------------------------------------------------

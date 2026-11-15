@@ -24,7 +24,7 @@ class DevZoneController extends Controller
     public function setupForm(Request $request)
     {
         $configuredKey = config('devzone.passkey');
-        $isSetupDone = config('devzone.setup_completed', true);
+        $isSetupDone = (bool) config('devzone.setup_completed', false);
 
         // If setup is already done and passkey is set, redirect to login
         if ($isSetupDone && !empty($configuredKey)) {
@@ -40,7 +40,7 @@ class DevZoneController extends Controller
     public function setupSubmit(Request $request)
     {
         $configuredKey = config('devzone.passkey');
-        $isSetupDone = config('devzone.setup_completed', true);
+        $isSetupDone = (bool) config('devzone.setup_completed', false);
 
         if ($isSetupDone && !empty($configuredKey)) {
             return redirect()->route('devzone.login');
@@ -79,10 +79,10 @@ class DevZoneController extends Controller
     public function loginForm(Request $request)
     {
         // If first-time setup is needed
-        $isSetupDone = config('devzone.setup_completed', true);
+        $isSetupDone = (bool) config('devzone.setup_completed', false);
         $configuredKey = config('devzone.passkey');
 
-        if (!$isSetupDone && empty($configuredKey)) {
+        if (!$isSetupDone || empty($configuredKey)) {
             return redirect()->route('devzone.setup');
         }
 
@@ -99,6 +99,13 @@ class DevZoneController extends Controller
      */
     public function login(Request $request)
     {
+        $isSetupDone = (bool) config('devzone.setup_completed', false);
+        $expectedKey = (string) config('devzone.passkey');
+
+        if (!$isSetupDone || empty($expectedKey)) {
+            return redirect()->route('devzone.setup');
+        }
+
         $throttleKey = 'devzone_login_' . $request->ip();
         $maxAttempts = (int) config('devzone.max_login_attempts', 5);
         $decayMinutes = (int) config('devzone.lockout_minutes', 10);
@@ -350,6 +357,129 @@ class DevZoneController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error clearing activity logs: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Update access credentials after verifying current passkey.
+     */
+    public function updateCredentials(Request $request)
+    {
+        $throttleKey = 'devzone_cred_update_' . $request->ip();
+
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+            $this->service->logActivity('Security Lockout', "IP {$request->ip()} locked out from updating credentials for {$seconds}s", 'error');
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Too many verification attempts. Please wait {$seconds} seconds before trying again.",
+                ], 429);
+            }
+
+            return back()->with('error', "Too many verification attempts. Please wait {$seconds} seconds before trying again.");
+        }
+
+        $request->validate([
+            'current_passkey'          => 'required|string',
+            'new_passkey'              => 'required|string|min:6|confirmed',
+            'new_passkey_confirmation' => 'required|string',
+            'admin_email'              => 'nullable|email',
+        ], [
+            'current_passkey.required'  => 'Current master passkey is required for verification.',
+            'new_passkey.required'      => 'A new master passkey is required.',
+            'new_passkey.min'           => 'New passkey must be at least 6 characters.',
+            'new_passkey.confirmed'     => 'New passkey confirmation does not match.',
+            'admin_email.email'         => 'Please provide a valid administrator email address.',
+        ]);
+
+        $currentPasskey = trim((string) $request->input('current_passkey'));
+        $expectedPasskey = (string) config('devzone.passkey');
+
+        if (empty($expectedPasskey) || !hash_equals($expectedPasskey, $currentPasskey)) {
+            RateLimiter::hit($throttleKey, 600);
+            $remaining = RateLimiter::remaining($throttleKey, 5);
+
+            $this->service->logActivity('Security Warning', "Failed passkey change attempt: current passkey mismatch from IP {$request->ip()}", 'warning');
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Current master passkey does not match our records. ({$remaining} attempts remaining)",
+                ], 422);
+            }
+
+            return back()->with('error', "Current master passkey does not match our records. ({$remaining} attempts remaining)");
+        }
+
+        $newPasskey = trim((string) $request->input('new_passkey'));
+        if (hash_equals($expectedPasskey, $newPasskey)) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'New passkey cannot be the same as your current passkey.',
+                ], 422);
+            }
+
+            return back()->with('error', 'New passkey cannot be the same as your current passkey.');
+        }
+
+        RateLimiter::clear($throttleKey);
+
+        $email = $request->filled('admin_email') ? trim((string) $request->input('admin_email')) : null;
+        $saved = $this->service->updateCredentials($newPasskey, $email);
+
+        if (!$saved) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unable to persist new credentials to .env file. Please check file permissions.',
+                ], 500);
+            }
+
+            return back()->with('error', 'Unable to persist new credentials to .env file. Please check file permissions.');
+        }
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Master credentials have been updated successfully! Please use your new passkey on future logins.',
+            ]);
+        }
+
+        return back()->with('success', 'Master credentials updated successfully! Please use your new passkey on future logins.');
+    }
+
+    /**
+     * Check GitHub for latest release updates.
+     */
+    public function checkVersion(Request $request): JsonResponse
+    {
+        try {
+            $info = $this->service->checkPackageUpdate();
+            return response()->json($info);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to check updates: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Execute package update routine.
+     */
+    public function updateVersion(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->service->updatePackage();
+            return response()->json($result);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Update failed: ' . $e->getMessage(),
             ], 500);
         }
     }
